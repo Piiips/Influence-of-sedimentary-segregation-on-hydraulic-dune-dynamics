@@ -255,8 +255,11 @@ for step in range(Nt):
 # 4. VIDEO GENERATION
 # =====================================================================
 print("Generating MP4 animation...")
-output_video_path = "/Volumes/Pips/03_vortices/outputs/animacion_duna_migracion_rotada.mp4"
-os.makedirs(os.path.dirname(output_video_path), exist_ok=True)
+# Setup output directory: local project outputs folder
+output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "outputs")
+os.makedirs(output_dir, exist_ok=True)
+
+output_video_path = os.path.join(output_dir, "animacion_duna_migracion_rotada.mp4")
 
 # Video properties
 width, height = 1280, 720
@@ -325,8 +328,8 @@ for f_idx in tqdm(range(num_frames), desc="Rendering frames"):
     
     phi_grid_local = np.full_like(X_grid_local, np.nan)
     
-    sigma_x = 0.25
-    sigma_y = 0.035
+    sigma_x = 0.8
+    sigma_y = 0.12
     
     for i in range(len(grid_x_local)):
         xg = grid_x_local[i]

@@ -1,0 +1,111 @@
+{
+  "meta": {
+    "count": 42,
+    "db_response_time_ms": 330,
+    "page": 1,
+    "per_page": 10,
+    "groups_count": null,
+    "x_query": {
+      "oql": "works where full text contains (dune lee side sorting segregation formula)\n  and year > 2015\nreturn id, DOI, display_name, year, citation count",
+      "oqo": {
+        "get_rows": "works",
+        "filter_rows": [
+          {
+            "column_id": "default.search",
+            "value": "dune lee side sorting segregation formula",
+            "operator": "contains"
+          },
+          {
+            "column_id": "publication_year",
+            "value": 2015,
+            "operator": ">"
+          }
+        ],
+        "select": [
+          "id",
+          "doi",
+          "display_name",
+          "publication_year",
+          "cited_by_count"
+        ],
+        "per_page": 10,
+        "page": 1
+      },
+      "url": "/works?filter=default.search:dune lee side sorting segregation formula,publication_year:%3E2015&select=id,doi,display_name,publication_year,cited_by_count&per_page=10&page=1"
+    },
+    "cost_usd": 0.001
+  },
+  "results": [
+    {
+      "id": "https://openalex.org/W2582908946",
+      "doi": "https://doi.org/10.1038/ncomms14239",
+      "display_name": "Unravelling raked linear dunes to explain the coexistence of bedforms in complex dunefields",
+      "publication_year": 2017,
+      "cited_by_count": 51
+    },
+    {
+      "id": "https://openalex.org/W4407711066",
+      "doi": "https://doi.org/10.1029/2024jg008419",
+      "display_name": "Species\u2010By\u2010Species Pattern Analysis of Coastal Dune Vegetation",
+      "publication_year": 2025,
+      "cited_by_count": 4
+    },
+    {
+      "id": "https://openalex.org/W2345466268",
+      "doi": "https://doi.org/10.1017/jfm.2016.246",
+      "display_name": "Particle based modelling and simulation of natural sand dynamics in the wave bottom boundary layer",
+      "publication_year": 2016,
+      "cited_by_count": 97
+    },
+    {
+      "id": "https://openalex.org/W2755904269",
+      "doi": "https://doi.org/10.1016/j.coastaleng.2017.09.005",
+      "display_name": "Bedload and suspended load contributions to breaker bar morphodynamics",
+      "publication_year": 2017,
+      "cited_by_count": 42
+    },
+    {
+      "id": "https://openalex.org/W2523057513",
+      "doi": "https://doi.org/10.1016/j.margeo.2016.09.009",
+      "display_name": "Flow dynamics and mixing processes in hydraulic jump arrays: Implications for channel-lobe transition zones",
+      "publication_year": 2016,
+      "cited_by_count": 72
+    },
+    {
+      "id": "https://openalex.org/W2766374037",
+      "doi": "https://doi.org/10.14288/1.0357233",
+      "display_name": "Relationship between particle size distribution and porosity in dump leaching",
+      "publication_year": 2017,
+      "cited_by_count": 9
+    },
+    {
+      "id": "https://openalex.org/W2792067327",
+      "doi": "https://doi.org/10.1016/j.advwatres.2018.02.011",
+      "display_name": "Ill-posedness in modeling mixed sediment river morphodynamics",
+      "publication_year": 2018,
+      "cited_by_count": 23
+    },
+    {
+      "id": "https://openalex.org/W4387227523",
+      "doi": "https://doi.org/10.1016/j.earscirev.2023.104571",
+      "display_name": "Scaling behavior of bedload transport: what if Bagnold was right?",
+      "publication_year": 2023,
+      "cited_by_count": 22
+    },
+    {
+      "id": "https://openalex.org/W3098786636",
+      "doi": "https://doi.org/10.1002/gdj3.106",
+      "display_name": "Global earth mineral inventory: A data legacy",
+      "publication_year": 2020,
+      "cited_by_count": 29
+    },
+    {
+      "id": "https://openalex.org/W2574120588",
+      "doi": "https://doi.org/10.3990/1.9789036542456",
+      "display_name": "Sand transport processes in the surf and swash zones",
+      "publication_year": 2016,
+      "cited_by_count": 11
+    }
+  ],
+  "group_by": []
+}

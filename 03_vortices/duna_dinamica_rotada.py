@@ -353,8 +353,8 @@ grid_y = np.linspace(-0.2, 1.2, 100)
 X_grid, Y_grid = np.meshgrid(grid_x, grid_y, indexing='ij')
 
 # Standard deviations for Gaussian kernel smoothing (in cm)
-sigma_x = 0.25  # Horizontal smoothing (reduced to show local concentration variations)
-sigma_y = 0.035 # Vertical smoothing (reduced to show local concentration variations)
+sigma_x = 0.8   # Horizontal smoothing
+sigma_y = 0.12  # Vertical smoothing
 
 # Cache for concentration grids to avoid duplicate calculations in the second figure
 history_phi = []
@@ -495,8 +495,15 @@ cbar.set_label('Concentración de Finas $\\phi_s$ (Rojas)', fontsize=12, fontwei
 cbar.ax.tick_params(labelsize=10)
 
 plt.suptitle("Evolución Temporal e Historial de Estratificación de la Duna Paramétrica (t = 0 a 100 min)", fontsize=16, fontweight='bold', y=0.97)
-output_path = "/Volumes/Pips/03_vortices/outputs/duna_dinamica_rotada.png"
-os.makedirs(os.path.dirname(output_path), exist_ok=True)
+# Setup output directory with fallback to local path if /Volumes/Pips is not accessible
+output_dir = "/Volumes/Pips/03_vortices/outputs"
+try:
+    os.makedirs(output_dir, exist_ok=True)
+except Exception:
+    output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "outputs")
+    os.makedirs(output_dir, exist_ok=True)
+
+output_path = os.path.join(output_dir, "duna_dinamica_rotada.png")
 plt.savefig(output_path, dpi=300, bbox_inches='tight')
 plt.close()
 
@@ -611,7 +618,7 @@ cbar2.set_label('Concentración de Finas $\\phi_s$ (Rojas)', fontsize=12, fontwe
 cbar2.ax.tick_params(labelsize=10)
 
 plt.suptitle("Seguimiento de la Duna con Ventana Móvil de 25 cm (t = 0 a 100 min)", fontsize=16, fontweight='bold', y=0.97)
-output_path_tracking = "/Volumes/Pips/03_vortices/outputs/duna_dinamica_rotada_seguimiento.png"
+output_path_tracking = os.path.join(output_dir, "duna_dinamica_rotada_seguimiento.png")
 fig2.savefig(output_path_tracking, dpi=300, bbox_inches='tight')
 plt.close(fig2)
 

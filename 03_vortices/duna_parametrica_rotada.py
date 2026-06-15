@@ -127,8 +127,15 @@ ax.set_aspect('equal')
 ax.grid(True, linestyle='--', alpha=0.5)
 
 plt.tight_layout()
-output_path = "/Volumes/Pips/03_vortices/outputs/duna_parametrica_rotada.png"
-os.makedirs(os.path.dirname(output_path), exist_ok=True)
+# Setup output directory with fallback to local path if /Volumes/Pips is not accessible
+output_dir = "/Volumes/Pips/03_vortices/outputs"
+try:
+    os.makedirs(output_dir, exist_ok=True)
+except Exception:
+    output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "outputs")
+    os.makedirs(output_dir, exist_ok=True)
+
+output_path = os.path.join(output_dir, "duna_parametrica_rotada.png")
 plt.savefig(output_path, dpi=300)
 plt.close()
 

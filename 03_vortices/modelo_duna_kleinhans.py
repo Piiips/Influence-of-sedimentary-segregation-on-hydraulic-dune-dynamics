@@ -94,9 +94,13 @@ z_strat = np.linspace(0.0, z_max_strat, Nz_strat)
 # Initialize stratigraphy matrix with bulk concentration of fines
 stratography = np.full((Nx, Nz_strat), phi_s_bulk)
 
-# Outputs path
+# Setup output directory with fallback to local path if /Volumes/Pips is not accessible
 output_dir = "/Volumes/Pips/03_vortices/outputs"
-os.makedirs(output_dir, exist_ok=True)
+try:
+    os.makedirs(output_dir, exist_ok=True)
+except Exception:
+    output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "outputs")
+    os.makedirs(output_dir, exist_ok=True)
 
 # =====================================================================
 # 3. INITIAL BED PROFILE

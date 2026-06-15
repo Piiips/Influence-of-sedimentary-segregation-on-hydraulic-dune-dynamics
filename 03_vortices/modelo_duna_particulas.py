@@ -50,6 +50,15 @@ def simular_vortice_segregacion():
     v_vel = np.sin(np.pi * Y / W) * (2 * Z - 1)
     w_vel = -(np.pi / W) * np.cos(np.pi * Y / W) * Z * (Z - 1)
     
+    # Derivadas (gradientes) de velocidad según la Ec. 4.8 del paper JFM 2026 (Pearse et al.)
+    # asumiendo ejes de duna: x horizontal (Y en código), z vertical (Z en código)
+    du_dx = (np.pi / W) * np.cos(np.pi * Y / W) * (2 * Z - 1)
+    dw_dz = -(np.pi / W) * np.cos(np.pi * Y / W) * (2 * Z - 1)
+    
+    # Reemplazar velocidades en la ecuación advección-segregación 4.8 (ejes x, z)
+    v_eff = dw_dz  # Velocidad horizontal en advección reemplazada por dw/dz
+    w_eff = du_dx  # Velocidad vertical en advección reemplazada por du/dx
+    
     # Parámetros físicos reales para calcular fsl (según pruebagamma.py)
     d_bar = 0.00051     # Diámetro promedio [m]
     R = 1.0 / 0.3       # Relación de diámetros (1.0mm / 0.3mm)
@@ -76,8 +85,8 @@ def simular_vortice_segregacion():
     phi[Z < phi_s_total] = 1.0
     
     # Solver de Volúmenes Finitos (Rusanov)
-    dt_sol = 0.15 * min(dy / np.max(np.abs(v_vel)/Lambda), 
-                        dz_step / np.max(np.abs(w_vel)/Lambda + 1.0))
+    dt_sol = 0.15 * min(dy / np.max(np.abs(v_eff)/Lambda), 
+                        dz_step / np.max(np.abs(w_eff)/Lambda + 1.0))
     t_max = 30.0
     n_steps = int(t_max / dt_sol)
     
@@ -86,12 +95,12 @@ def simular_vortice_segregacion():
         
     for n in range(n_steps):
         # Flujo físico de advección (y) y advección + segregación (z)
-        fy = (1.0 / Lambda) * v_vel * phi
-        fz = (1.0 / Lambda) * w_vel * phi - phi * (1.0 - phi) * q_seg
+        fy = (1.0 / Lambda) * v_eff * phi
+        fz = (1.0 / Lambda) * w_eff * phi - phi * (1.0 - phi) * q_seg
         
         # Velocidades máximas de onda locales
-        speed_y = np.abs(v_vel) / Lambda
-        speed_z = np.abs(w_vel) / Lambda + q_seg * np.abs(1.0 - 2.0 * phi)
+        speed_y = np.abs(v_eff) / Lambda
+        speed_z = np.abs(w_eff) / Lambda + q_seg * np.abs(1.0 - 2.0 * phi)
         
         Flux_Y = np.zeros((Ny + 1, Nz))
         Flux_Z = np.zeros((Ny, Nz + 1))
@@ -152,9 +161,13 @@ x = np.linspace(0, L, Nx)
 dt = 2.0             # Paso de tiempo en segundos
 Nt = 600              # Número de pasos de tiempo (~20 minutos de simulación)
 
-# Crear directorio de salida
+# Setup output directory with fallback to local path if /Volumes/Pips is not accessible
 output_dir = "/Volumes/Pips/03_vortices/outputs"
-os.makedirs(output_dir, exist_ok=True)
+try:
+    os.makedirs(output_dir, exist_ok=True)
+except Exception:
+    output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "outputs")
+    os.makedirs(output_dir, exist_ok=True)
 
 # =====================================================================
 # 2. CONDICIÓN INICIAL: PERFIL DE LA DUNA (Altura inicial ~40 mm)
