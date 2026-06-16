@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
+MODELO LAGRANGIANO
 Dune Migration and Particle Displacement Animation (Rotated Frame)
 ------------------------------------------------------------------
 This script runs the dune migration simulation and generates a high-quality 

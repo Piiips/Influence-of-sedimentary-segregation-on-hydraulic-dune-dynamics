@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
+MODELO EULERIANO
 Animador Dinámico de la Estratigrafía Física y Vórtice de Sotavento
 ------------------------------------------------------------------
 Este script corre la simulación numérica completa de la migración de la duna,
@@ -18,7 +19,29 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from matplotlib.colors import LinearSegmentedColormap
-from matplotlib.patches import FancyArrowPatch
+from matplotlib.patches import FancyArrowPatch, Patch
+from matplotlib.lines import Line2D
+
+# Solucionador tridiagonal (Algoritmo de Thomas) para el paso implícito de FSL
+def solve_tridiagonal(a, b, c, d):
+    n = len(d)
+    c_prime = np.zeros(n)
+    d_prime = np.zeros(n)
+    
+    c_prime[0] = c[0] / b[0]
+    d_prime[0] = d[0] / b[0]
+    
+    for i in range(1, n):
+        denom = b[i] - a[i] * c_prime[i-1]
+        if i < n - 1:
+            c_prime[i] = c[i] / denom
+        d_prime[i] = (d[i] - a[i] * d_prime[i-1]) / denom
+        
+    x = np.zeros(n)
+    x[-1] = d_prime[-1]
+    for i in range(n-2, -1, -1):
+        x[i] = d_prime[i] - c_prime[i] * x[i+1]
+    return x
 
 # =====================================================================
 # 1. PARÁMETROS GEOMÉTRICOS Y FÍSICOS (generar_animacion_duna.py)
@@ -50,6 +73,17 @@ lambda_s = 60.0 #coeficientes de decaimiento exponencial espacial
 lambda_l = 180.0
 D_grav = 1.5e-7
 
+# Parámetros para la segregación vertical FSL en la capa activa
+h_active = 0.006      # Espesor promedio de la capa activa [m] (6 mm)
+D_part = 8.0e-7       # Coeficiente de difusión de partículas [m2/s]
+Nz_active = 30        # Nodos verticales para resolver la capa activa
+
+# Coeficientes del modelo FSL
+B_coeff = 0.3744
+C_coeff = 0.2712
+Phi_coeff = 0.60
+dudz = 3.75           # Tasa de deformación por cizalla en la capa activa [1/s]
+
 dt = 2.0
 t_max = 2400.0        # 40 minutos de simulación física
 Nt = int(t_max / dt)
@@ -76,6 +110,20 @@ for i, xv in enumerate(x_grid):
 Nz_strat = 150
 z_strat_max = 0.015    # Altura máxima del registro estratigráfico (1.5 cm)
 stratigraphy = np.full((Nx, Nz_strat), phi_s_bulk)
+
+# Inicializar grilla vertical y perfiles de la capa activa para FSL
+z_active = np.linspace(-h_active, 0.0, Nz_active)
+dz_active = z_active[1] - z_active[0]
+phi_active = np.full((Nx, Nz_active), phi_s_bulk)
+
+# Calcular coeficientes de segregación FSL en cada nodo de profundidad
+d_bar = phi_s_bulk * d_s + phi_l_bulk * d_l
+R_ratio = d_l / d_s
+F_coeff = (R_ratio - 1.0) + 2.0957 * phi_l_bulk * (R_ratio - 1.0)**2
+fsl_active = np.zeros(Nz_active)
+for k in range(Nz_active):
+    depth_k = max(-z_active[k], 1e-4)
+    fsl_active[k] = (B_coeff * dudz * (d_bar**2)) * F_coeff / (C_coeff * d_bar + Phi_coeff * depth_k)
 
 # Historial para guardar los fotogramas de la animación
 save_interval = 5      # Graba un fotograma cada 10 segundos físicos
@@ -105,6 +153,55 @@ for step in range(Nt):
         else:
             q_s[i] = q_s_crest * (phi_s_bulk * np.exp(-lambda_s * (xv - x_crest)) + 
                                   phi_l_bulk * np.exp(-lambda_l * (xv - x_crest)))
+
+    # Resolver la ecuación de advección-difusión vertical FSL a lo largo del barlovento (stoss)
+    i_start = np.searchsorted(x_grid, x_start)
+    i_crest_idx = i_crest
+    
+    current_phi = np.full(Nz_active, phi_s_bulk)
+    phi_active[i_start, :] = current_phi
+    
+    for idx in range(i_start + 1, min(i_crest_idx + 1, Nx)):
+        q_s_local = q_s[idx]
+        U_sed = max(q_s_local / ((1.0 - porosity) * h_active), 1e-6)
+        dtau = min(dx / U_sed, 100.0) # Capping del paso de tiempo para mantener la física estable
+        
+        A_sys = np.zeros(Nz_active)
+        B_sys = np.zeros(Nz_active)
+        C_sys = np.zeros(Nz_active)
+        D_sys = current_phi.copy()
+        
+        diff_factor = D_part * dtau / (dz_active**2)
+        
+        for k in range(1, Nz_active - 1):
+            fsl_k = fsl_active[k]
+            fsl_kp1 = fsl_active[k+1]
+            adv_k = dtau * fsl_k * (1.0 - current_phi[k]) / dz_active
+            adv_kp1 = dtau * fsl_kp1 * (1.0 - current_phi[k+1]) / dz_active
+            
+            A_sys[k] = -diff_factor
+            B_sys[k] = 1.0 + adv_k + 2.0 * diff_factor
+            C_sys[k] = -adv_kp1 - diff_factor
+            
+        # Condición de contorno inferior (k = 0): flujo neto nulo
+        adv_0 = dtau * fsl_active[0] * (1.0 - current_phi[0]) / dz_active
+        adv_1 = dtau * fsl_active[1] * (1.0 - current_phi[1]) / dz_active
+        A_sys[0] = 0.0
+        B_sys[0] = 1.0 + adv_0 + 2.0 * diff_factor
+        C_sys[0] = -adv_1 - 2.0 * diff_factor
+        
+        # Condición de contorno superior (k = Nz_active - 1): flujo neto nulo
+        adv_M = dtau * fsl_active[-1] * (1.0 - current_phi[-1]) / dz_active
+        A_sys[-1] = -2.0 * diff_factor
+        B_sys[-1] = 1.0 + adv_M + 2.0 * diff_factor
+        C_sys[-1] = 0.0
+        
+        current_phi = solve_tridiagonal(A_sys, B_sys, C_sys, D_sys)
+        current_phi = np.clip(current_phi, 0.05, 0.95)
+        phi_active[idx, :] = current_phi
+
+    # Concentración en la superficie de la cresta (para alimentar sotavento)
+    phi_s_crest = phi_active[min(i_crest_idx, Nx-1), -1]
 
     # Evolución Exner
     y_bed_new = y_bed.copy()
@@ -145,7 +242,9 @@ for step in range(Nt):
                 dx_dep = x_grid[i] - x_crest
                 P_s = lambda_s * np.exp(-lambda_s * dx_dep)
                 P_l = lambda_l * np.exp(-lambda_l * dx_dep)
-                phi_dep_base = (phi_s_bulk * P_s) / (phi_s_bulk * P_s + phi_l_bulk * P_l + 1e-9)
+                phi_s_feed = phi_s_crest
+                phi_l_feed = 1.0 - phi_s_feed
+                phi_dep_base = (phi_s_feed * P_s) / (phi_s_feed * P_s + phi_l_feed * P_l + 1e-9)
                 
                 # Efecto del esfuerzo de corte del vórtice (contracorriente):
                 # La cizalla de la burbuja de recirculación mueve finas hacia la cresta (convergencia)
@@ -163,10 +262,14 @@ for step in range(Nt):
                 avalanche_phase = np.sin(2.0 * np.pi * t_curr / 60.0)
                 phi_dep = phi_dep * (1.0 + 0.15 * avalanche_phase)
                 phi_dep = np.clip(phi_dep, 0.15, 0.95)
+                stratigraphy[i, z_min_idx : z_max_idx + 1] = phi_dep
             else:
-                phi_dep = phi_s_bulk
-                
-            stratigraphy[i, z_min_idx : z_max_idx + 1] = phi_dep
+                # Deposición en barlovento (stoss slope): interpolamos del perfil vertical activo
+                for z_idx in range(z_min_idx, z_max_idx + 1):
+                    y_val = (z_idx / Nz_strat) * z_strat_max
+                    z_target = y_val - y_bed_new[i]
+                    phi_dep = np.interp(z_target, z_active, phi_active[i, :])
+                    stratigraphy[i, z_idx] = phi_dep
             
     y_bed = y_bed_new
     
@@ -296,6 +399,15 @@ for f_idx in tqdm(range(num_frames), desc="Procesando fotogramas"):
     min_val = t_val / 60.0
     ax.text(x_min_plot + 0.4, 1.15, f"t = {min_val:.1f} min", fontsize=14, fontweight='bold', color='#00f5d4',
             bbox=dict(facecolor='#14213d', alpha=0.8, edgecolor='#00f5d4', boxstyle='round,pad=0.3'))
+    
+    # Leyenda de colores de la estratigrafía y elementos de la duna
+    legend_elements = [
+        Line2D([0], [0], color='#ffffff', linewidth=2.5, label='Superficie de la Duna'),
+        Patch(facecolor='#ae2012', edgecolor='#ffffff', label='Rojo: Arena Fina ($d_s=0.3$ mm, $\\phi_s \\approx 0.9$)'),
+        Patch(facecolor='#ee9b00', edgecolor='#ffffff', label='Amarillo: Mezcla Bulk ($\\phi_s \\approx 0.7$)'),
+        Patch(facecolor='#005f73', edgecolor='#ffffff', label='Azul/Cian: Arena Gruesa ($d_l=1.0$ mm, $\\phi_s \\approx 0.2$)')
+    ]
+    ax.legend(handles=legend_elements, loc='upper right', frameon=True, facecolor='#070b19', edgecolor='#ffffff', fontsize=9)
     
     # Ajustes estéticos
     ax.set_title("Evolución Temporal de la Duna y Estratigrafía Cruzada\n(Con Esfuerzo de Corte de Sotavento)", fontsize=16, fontweight='bold', pad=15, color='#ffffff')
