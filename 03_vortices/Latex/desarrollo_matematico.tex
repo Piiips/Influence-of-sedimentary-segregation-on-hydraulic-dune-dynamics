@@ -1,0 +1,188 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{microtype}
+\usepackage{xcolor}
+
+\geometry{top=2.5cm, bottom=2.5cm, left=2.5cm, right=2.5cm}
+
+\title{\textbf{Desarrollo Matemático Completo del Modelo de Segregación en Dunas}}
+\author{Influencia de la Segregación Sedimentaria en la Dinámica Hidráulica de Dunas}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+\newpage
+
+\section{Introducción}
+Este documento presenta el desarrollo matemático riguroso detrás del script \texttt{Parametrized\_modified.py}. El modelo simula el transporte advectivo y la segregación por gravedad de un sedimento bidisperso (compuesto por partículas finas y gruesas) en el interior de una duna que migra a velocidad constante $c_{\text{mig}}$ bajo la influencia de un flujo hidráulico. El cálculo se realiza en un sistema de coordenadas adaptativas sigma ($\eta$), moviéndose de forma solidaria con la duna.
+
+---
+
+\section{Geometría de la Duna y Topografía}
+La duna se modela en un dominio bidimensional de longitud $L$ con condiciones de contorno periódicas en la dirección horizontal $x$. La topografía del lecho, denotada por $h(x)$, se define mediante un perfil lineal por tramos (Opción 2 del script):
+
+\begin{equation}
+h(x) = \begin{cases} 
+H_{\text{base}} + H_d \left( \frac{x}{x_{\text{crest}}} \right), & \text{si } 0 \le x \le x_{\text{crest}} \quad \text{(Barlovento / Stoss)} \\
+H_{\text{base}} + H_d \left( 1 - \frac{x - x_{\text{crest}}}{L - x_{\text{crest}}} \right), & \text{si } x_{\text{crest}} < x \le L \quad \text{(Sotavento / Lee)}
+\end{cases}
+\end{equation}
+
+donde:
+\begin{itemize}
+    \item $H_{\text{base}}$ es la altura del lecho plano base (trough) [m].
+    \item $H_d$ es la altura neta de la duna desde la base hasta la cresta [m].
+    \item $x_{\text{crest}}$ es la posición horizontal de la cresta [m].
+\end{itemize}
+
+La derivada espacial de la topografía, $\frac{dh}{dx}$, es constante por tramos:
+\begin{equation}
+\frac{dh}{dx} = \begin{cases} 
+\frac{H_d}{x_{\text{crest}}} > 0, & \text{si } 0 \le x \le x_{\text{crest}} \\
+-\frac{H_d}{L - x_{\text{crest}}} < 0, & \text{si } x_{\text{crest}} < x \le L
+\end{cases}
+\end{equation}
+
+---
+
+\section{Transformación a Coordenadas Sigma (\(\eta\))}
+Para resolver las ecuaciones de conservación en un lecho deformador, se realiza un cambio de coordenadas del plano físico $(x, z)$ al plano computacional regularizado $(x, \eta)$. La coordenada vertical sigma se define como:
+\begin{equation}
+\eta = \frac{z}{h(x)} \quad \implies \quad \eta \in [0, 1]
+\end{equation}
+
+donde $\eta = 0$ corresponde al lecho inferior ($z=0$) y \(\eta = 1\) a la superficie de la duna ($z=h(x)$).
+
+\subsection{Derivadas Parciales de la Transformación}
+Utilizando la regla de la cadena, las derivadas en el sistema físico $(x, z)$ se expresan en función del sistema sigma $(x, \eta)$ como:
+\begin{align}
+\frac{\partial}{\partial z} &= \frac{\partial \eta}{\partial z} \frac{\partial}{\partial \eta} = \frac{1}{h(x)} \frac{\partial}{\partial \eta} \\
+\frac{\partial}{\partial x}\Big|_z &= \frac{\partial}{\partial x}\Big|_{\eta} + \frac{\partial \eta}{\partial x} \frac{\partial}{\partial \eta} = \frac{\partial}{\partial x}\Big|_{\eta} - \frac{\eta}{h(x)} \frac{dh}{dx} \frac{\partial}{\partial \eta}
+\end{align}
+
+---
+
+\section{Campo de Velocidades Libre de Divergencia}
+El flujo interno dentro del lecho de la duna se describe mediante las componentes de velocidad horizontal $u(x, z)$ y vertical $w(x, z)$. 
+
+\subsection{Velocidad Horizontal (\(u\))}
+Para modelar el flujo sobre la duna conservando la masa de sedimentos advectados, la velocidad horizontal promedio debe escalar de forma inversa al espesor local del lecho $h(x)$. En coordenadas sigma, adoptamos un perfil de ley de potencia con exponente $m$:
+\begin{equation}
+u(x, \eta) = \frac{U_0 H_{\text{base}}}{h(x)} (m+1) \eta^m - c_{\text{mig}}
+\end{equation}
+donde $U_0$ es la velocidad de referencia en el trough y el término $- c_{\text{mig}}$ representa el cambio al sistema de referencia móvil solidario con la duna.
+
+\subsection{Velocidad Vertical de Malla (\(\omega\))}
+Dado que el fluido es tangente a las líneas de corriente (las cuales coinciden con las coordenadas \(\eta\) constantes en el marco móvil), la única velocidad vertical en el sistema computacional $\eta$, denotada por $\omega = h w_{\eta}$, es inducida por la deformación espacial de la grilla debido a la migración de la duna a velocidad $c_{\text{mig}}$:
+\begin{equation}
+\omega(x, \eta) = c_{\text{mig}} \eta \frac{dh}{dx}
+\end{equation}
+
+\subsection{Demostración de Divergencia Cero}
+En coordenadas adaptativas sigma, la divergencia de un campo de velocidades $(u, \omega)$ está dada por:
+\begin{equation}
+\nabla \cdot \vec{u} = \frac{\partial (h u)}{\partial x} + \frac{\partial \omega}{\partial \eta}
+\end{equation}
+Sustituyendo los campos definidos:
+\begin{align}
+h u &= U_0 H_{\text{base}} (m+1) \eta^m - c_{\text{mig}} h(x) \\
+\frac{\partial (h u)}{\partial x} &= - c_{\text{mig}} \frac{dh}{dx} \\
+\frac{\partial \omega}{\partial \eta} &= c_{\text{mig}} \frac{dh}{dx}
+\end{align}
+Sumando ambos términos:
+\begin{equation}
+\nabla \cdot \vec{u} = - c_{\text{mig}} \frac{dh}{dx} + c_{\text{mig}} \frac{dh}{dx} = 0
+\end{equation}
+Queda demostrado que el campo es exactamente libre de divergencia, lo cual es esencial para evitar acumulaciones artificiales de masa de sedimentos.
+
+---
+
+\section{Ecuación de Conservación y Transporte}
+La ecuación diferencial gobernante para la concentración de partículas finas $\phi_s(x, \eta, t)$ en coordenadas físicas $(x, z)$ es:
+\begin{equation}
+\frac{\partial \phi_s}{\partial t} + \frac{\partial (u \phi_s)}{\partial x} + \frac{\partial (w \phi_s)}{\partial z} + \frac{\partial F_{\text{seg}}}{\partial z} = 0
+\end{equation}
+
+Multiplicando por el jacobiano de la transformación $h(x)$ e introduciendo la cantidad conservada $Q = h \phi_s$, la ecuación en coordenadas sigma se escribe como:
+\begin{equation}
+\frac{\partial Q}{\partial t} = -\frac{\partial (u Q)}{\partial x} - \frac{\partial}{\partial \eta} \left( \omega \phi_s + F_{\text{seg}} \right)
+\end{equation}
+
+donde:
+\begin{itemize}
+    \item $u Q$ es el flujo advectivo horizontal.
+    \item $\omega \phi_s$ es el flujo advectivo vertical en coordenadas sigma.
+    \item $F_{\text{seg}} = - q_{\text{seg}} \phi_s (1 - \phi_s)$ es el flujo de segregación vertical impulsado por gravedad y cizallamiento.
+\end{itemize}
+
+---
+
+\section{Condición de Frontera Abierta de Retroalimentación Dinámica}
+Para simular un sistema cerrado global (conservando la concentración promedio de finos en $0.7$), la masa total de finos que escapa por erosión en barlovento debe ser igual a la masa que ingresa por deposición en sotavento.
+
+\subsection{Erosión en Barlovento (Stoss Side, $\omega \ge 0$)}
+Hay flujo saliente. La frontera utiliza la concentración del último nodo interno del lecho:
+\begin{equation}
+F_{\eta}(x, 1) = \omega \phi_s(x, 1)
+\end{equation}
+
+\subsection{Deposición en Sotavento (Lee Side, $\omega < 0$)}
+Hay flujo entrante. Definimos una concentración de alimentación $\phi_{\text{inflow}}(x, t)$ que conserve la masa total:
+\begin{equation}
+F_{\eta}(x, 1) = \omega \phi_{\text{inflow}}(x, t)
+\end{equation}
+
+Para lograr la conservación estricta, imponemos que la integral del flujo neto a través de la superficie libre ($\eta = 1$) sea cero:
+\begin{equation}
+\int_{\text{erosion}} \omega \phi_s(x, 1) \, dx + \int_{\text{deposición}} \omega \phi_{\text{inflow}}(x, t) \, dx = 0
+\end{equation}
+
+\subsection{Modulación de la Concentración de Entrada}
+Para modelar la estratificación cruzada combinamos un gradiente espacial de rampa (Opción B) con una modulación temporal periódica (Opción A):
+\begin{equation}
+P(x, t) = P_{\text{spatial}}(x) \cdot P_{\text{temporal}}(t)
+\end{equation}
+donde:
+\begin{align}
+P_{\text{spatial}}(x) &= 1.0 + \alpha_{\text{spatial}} \left( 0.5 - \frac{x - x_{\text{crest}}}{L - x_{\text{crest}}} \right) \\
+P_{\text{temporal}}(t) &= 1.0 + A_{\text{temp}} \sin\left(\frac{2\pi t}{T_{\text{temp}}}\right)
+\end{align}
+
+La concentración de entrada real en sotavento se define escalando la función de peso por un factor $\lambda(t)$:
+\begin{equation}
+\phi_{\text{inflow}}(x, t) = \lambda(t) P(x, t)
+\end{equation}
+Sustituyendo en la integral de conservación y despejando $\lambda(t)$:
+\begin{equation}
+\lambda(t) = \frac{\int_{\text{erosion}} \omega(x) \phi_s(x, 1) \, dx}{\int_{\text{deposición}} |\omega(x)| P(x, t) \, dx}
+\end{equation}
+Este método garantiza analíticamente que la concentración global promedio $\langle\phi_s\rangle$ permanezca constante a lo largo del tiempo.
+
+---
+
+\section{Estratificación Cruzada y Trazado de las Líneas del Abanico}
+Cuando la duna migra a velocidad $c_{\text{mig}}$, el sedimento depositado en la cara de sotavento queda inmóvil en el marco de referencia físico de coordenadas fijas $(x_p, z_p)$. 
+
+El tiempo de deposición original $t_0$ para cualquier coordenada física del lecho $(x_p, z_p)$ dentro del cuerpo de la duna se deduce resolviendo la ecuación de la trayectoria de la cara de sotavento:
+\begin{equation}
+t_0(x_p, z_p) = t - \frac{1}{c_{\text{mig}}} \left[ \left( c_{\text{mig}} t - x_p + x_{\text{dep\_0}}(z_p) \right) \pmod L \right]
+\end{equation}
+donde:
+\begin{align}
+R(z_p) &= 1.0 - \frac{z_p - H_{\text{base}}}{H_d} \\
+x_{\text{dep\_0}}(z_p) &= x_{\text{crest}} + R(z_p) (L - x_{\text{crest}})
+\end{align}
+
+Las curvas de nivel de la matriz $t_0(x_p, z_p)$ para valores discretos representan de forma exacta las \textbf{líneas de estratificación cruzada} o abanicos de avalancha que quedan grabados en la geología de la duna.
+
+\end{document}
