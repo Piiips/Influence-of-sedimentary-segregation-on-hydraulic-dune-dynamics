@@ -57,7 +57,7 @@ Nz = 40           # Number of grid points in vertical (eta)
 U_0 = 0.3         # Reference flow velocity [m/s]
 m_exponent = 3.0  # Velocity profile exponent
 c_mig = 0.002     # Dune migration speed [m/s]
-q_seg = 0.008     # Gravity-driven segregation velocity [m/s]
+q_seg = 0.001     # Gravity-driven segregation velocity [m/s]
 
 # Target average concentration (boundary condition)
 phi_s_target = 0.7
@@ -113,7 +113,7 @@ M_initial = np.sum(Q) * dx * deta
 print(f"Initial total mass (Q integral): {M_initial:.8f}")
 
 # Compute CFL time step dynamically based on max modulated velocities
-T_period = 50.0
+T_period = 120.0 #50
 A_amp = 0.4
 delta_crest = 0.02
 u_max = np.max(np.abs((U_0 * H_base / h_bed_2d) * (m_exponent + 1.0) * (1.0 + A_amp) - c_mig))
@@ -180,7 +180,7 @@ def compute_rhs(Q_in, t_val):
     phi_in = Q_in / h_bed_2d
 
     # Modulation parameters for periodic deposition
-    T = 50.0      # Period of layer deposition (s)
+    T = 120.0      # Period of layer deposition (s) 50 OG
     A = 0.4       # Amplitude of velocity modulation
     A_P = 0.35    # Amplitude of classification sorting modulation
     delta = 0.02  # Width of transition at crest
@@ -238,7 +238,7 @@ def compute_rhs(Q_in, t_val):
 
     # Spatial sorting on lee side: coarser at bottom/toe, finer near crest
     s = np.clip((x_cell - x_crest) / (L - x_crest), 0.0, 1.0)
-    alpha_spatial = 0.6
+    alpha_spatial = 0.3 ###
     P_spatial = np.maximum(0.1, 1.0 + alpha_spatial * (0.5 - s))
 
     # Temporal sorting modulation

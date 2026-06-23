@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.3.1)  23 JUN 2026 10:52
+This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.3.1)  23 JUN 2026 16:36
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -508,50 +508,29 @@ LaTeX Info: Redefining \% on input line 1.
  [1
 
 {/usr/local/texlive/2026basic/texmf-var/fonts/map/pdftex/updmap/pdftex.map}]
-Overfull \hbox (48.40816pt too wide) in paragraph at lines 27--28
+Overfull \hbox (58.2959pt too wide) in paragraph at lines 27--28
 []\OT1/cmr/m/n/10.95 (-20) Este do-cu-men-to pre-sen-ta el de-sa-rro-llo ma-tem
-^^Sati-co ri-gu-ro-so detr^^Sas del script \OT1/cmtt/m/n/10.95 Parametrized[]mo
-dified.py\OT1/cmr/m/n/10.95 (-20) .
+^^Sati-co ri-gu-ro-so detr^^Sas del script \OT1/cmtt/m/n/10.95 duna[]bidispersa
+[]abanico.py\OT1/cmr/m/n/10.95 (-20) .
  []
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 58.
+(hyperref)                removing `math shift' on input line 52.
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `\eta' on input line 58.
-
-[2]
-
-Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 78.
+(hyperref)                removing `\eta' on input line 52.
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 85.
+(hyperref)                removing `math shift' on input line 70.
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `\omega' on input line 85.
+(hyperref)                removing `\psi' on input line 70.
 
-[3]
-
-Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 133.
-
-
-Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `\omega' on input line 133.
-
-
-Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `\ge' on input line 133.
-
-
-Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 133.
-
+[2] [3]
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
 (hyperref)                removing `math shift' on input line 139.
@@ -562,7 +541,15 @@ Package hyperref Warning: Token not allowed in a PDF string (Unicode):
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 139.
+(hyperref)                removing `\ge' on input line 139.
+
+
+Package hyperref Warning: Token not allowed in a PDF string (Unicode):
+(hyperref)                removing `math shift' on input line 145.
+
+
+Package hyperref Warning: Token not allowed in a PDF string (Unicode):
+(hyperref)                removing `\omega' on input line 145.
 
 [4] [5] (./desarrollo_matematico.aux
 LaTeX Info: Redefining \. on input line 11.
@@ -573,16 +560,16 @@ LaTeX2e <2025-11-01>
 L3 programming layer <2026-01-19>
  ***********
 Package rerunfilecheck Info: File `desarrollo_matematico.out' has not changed.
-(rerunfilecheck)             Checksum: CC47BFEBBF2ED9C8A9FE3138CCCF3CE5;3566.
+(rerunfilecheck)             Checksum: 83473224F0345BC1255C336C50A02FFB;2727.
  ) 
 Here is how much of TeX's memory you used:
- 13890 strings out of 469006
- 216915 string characters out of 5454814
- 689191 words of memory out of 5000000
+ 13876 strings out of 469006
+ 216815 string characters out of 5454814
+ 689215 words of memory out of 5000000
  42330 multiletter control sequences out of 15000+600000
- 640123 words of font info for 117 fonts, out of 8000000 for 9000
+ 639801 words of font info for 111 fonts, out of 8000000 for 9000
  319 hyphenation exceptions out of 8191
- 75i,13n,79p,1018b,487s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 75i,12n,79p,1018b,496s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx1
 0.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/c
 mbx12.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/
@@ -598,10 +585,10 @@ nts/type1/public/amsfonts/cm/cmr8.pfb></usr/local/texlive/2026basic/texmf-dist/
 fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/local/texlive/2026basic/texmf-d
 ist/fonts/type1/public/amsfonts/cm/cmsy8.pfb></usr/local/texlive/2026basic/texm
 f-dist/fonts/type1/public/amsfonts/cm/cmtt10.pfb>
-Output written on desarrollo_matematico.pdf (5 pages, 187882 bytes).
+Output written on desarrollo_matematico.pdf (5 pages, 188310 bytes).
 PDF statistics:
- 207 PDF objects out of 1000 (max. 8388607)
- 170 compressed objects within 2 object streams
- 46 named destinations out of 1000 (max. 500000)
- 25201 words of extra memory for PDF output out of 29859 (max. 10000000)
+ 197 PDF objects out of 1000 (max. 8388607)
+ 160 compressed objects within 2 object streams
+ 44 named destinations out of 1000 (max. 500000)
+ 25185 words of extra memory for PDF output out of 29859 (max. 10000000)
 

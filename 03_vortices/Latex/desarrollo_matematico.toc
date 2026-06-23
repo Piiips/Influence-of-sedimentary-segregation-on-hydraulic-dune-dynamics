@@ -1,15 +1,13 @@
 \babel@toc {spanish}{}\relax 
 \contentsline {section}{\numberline {1}Introducción}{2}{section.1}%
 \contentsline {section}{\numberline {2}Geometría de la Duna y Topografía}{2}{section.2}%
-\contentsline {section}{\numberline {3}Transformación a Coordenadas Sigma (\(\eta \))}{2}{section.3}%
-\contentsline {subsection}{\numberline {3.1}Derivadas Parciales de la Transformación}{2}{subsection.3.1}%
-\contentsline {section}{\numberline {4}Campo de Velocidades Libre de Divergencia}{3}{section.4}%
-\contentsline {subsection}{\numberline {4.1}Velocidad Horizontal (\(u\))}{3}{subsection.4.1}%
-\contentsline {subsection}{\numberline {4.2}Velocidad Vertical de Malla (\(\omega \))}{3}{subsection.4.2}%
-\contentsline {subsection}{\numberline {4.3}Demostración de Divergencia Cero}{3}{subsection.4.3}%
-\contentsline {section}{\numberline {5}Ecuación de Conservación y Transporte}{3}{section.5}%
-\contentsline {section}{\numberline {6}Condición de Frontera Abierta de Retroalimentación Dinámica}{4}{section.6}%
-\contentsline {subsection}{\numberline {6.1}Erosión en Barlovento (Stoss Side, $\omega \ge 0$)}{4}{subsection.6.1}%
-\contentsline {subsection}{\numberline {6.2}Deposición en Sotavento (Lee Side, $\omega < 0$)}{4}{subsection.6.2}%
-\contentsline {subsection}{\numberline {6.3}Modulación de la Concentración de Entrada}{4}{subsection.6.3}%
-\contentsline {section}{\numberline {7}Estratificación Cruzada y Trazado de las Líneas del Abanico}{5}{section.7}%
+\contentsline {section}{\numberline {3}Transformación de Coordenadas Sigma (\(\eta \))}{2}{section.3}%
+\contentsline {section}{\numberline {4}Campo de Velocidades Modulado y Libre de Divergencia}{2}{section.4}%
+\contentsline {subsection}{\numberline {4.1}Definición de la Función de Corriente (\(\psi \))}{3}{subsection.4.1}%
+\contentsline {subsection}{\numberline {4.2}Velocidades Derivadas}{3}{subsection.4.2}%
+\contentsline {subsection}{\numberline {4.3}Verificación de la Divergencia Cero}{3}{subsection.4.3}%
+\contentsline {section}{\numberline {5}Ecuación de Advección-Segregación}{4}{section.5}%
+\contentsline {section}{\numberline {6}Condiciones de Borde Dinámicas}{4}{section.6}%
+\contentsline {subsection}{\numberline {6.1}Erosión en Barlovento (\(\omega \ge 0\))}{4}{subsection.6.1}%
+\contentsline {subsection}{\numberline {6.2}Deposición en Sotavento (\(\omega < 0\))}{4}{subsection.6.2}%
+\contentsline {section}{\numberline {7}Esquema de Integración Temporal (SSP-RK2)}{5}{section.7}%
