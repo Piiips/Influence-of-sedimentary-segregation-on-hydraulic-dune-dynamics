@@ -57,7 +57,7 @@ Nz = 40           # Number of grid points in vertical (eta)
 U_0 = 0.3         # Reference flow velocity [m/s]
 m_exponent = 3.0  # Velocity profile exponent
 c_mig = 0.002     # Dune migration speed [m/s]
-q_seg = 0.001     # Gravity-driven segregation velocity [m/s]
+q_seg = 0.002 #8 og     # Gravity-driven segregation velocity [m/s]
 
 # Target average concentration (boundary condition)
 phi_s_target = 0.7
@@ -105,11 +105,14 @@ print(f"Max divergence of velocity field: {max_divergence:.2e} (should be ~0)")
 # 3. SOLVER & INITIALIZATION
 # =====================================================================
 # Initial concentration: homogeneous mixture of 70% small particles
-phi_s = np.ones((Nx, Nz)) * phi_s_target
-Q = h_bed_2d * phi_s  # Conserved quantity Q = h * phi_s
+phi_s_nodiff = np.ones((Nx, Nz)) * phi_s_target
+Q_nodiff = h_bed_2d * phi_s_nodiff  # Conserved quantity Q = h * phi_s
+
+phi_s_diff = np.ones((Nx, Nz)) * phi_s_target
+Q_diff = h_bed_2d * phi_s_diff
 
 # Store initial total mass for conservation check
-M_initial = np.sum(Q) * dx * deta
+M_initial = np.sum(Q_nodiff) * dx * deta
 print(f"Initial total mass (Q integral): {M_initial:.8f}")
 
 # Compute CFL time step dynamically based on max modulated velocities
@@ -176,11 +179,11 @@ def global_mass_correction(Q, h_2d, M_target):
 
 
 # RHS spatial derivatives computation with temporal modulation for periodic layering
-def compute_rhs(Q_in, t_val):
+def compute_rhs(Q_in, t_val, use_diffusion=False):
     phi_in = Q_in / h_bed_2d
 
     # Modulation parameters for periodic deposition
-    T = 120.0      # Period of layer deposition (s) 50 OG
+    T = 50.0      # Period of layer deposition (s)
     A = 0.4       # Amplitude of velocity modulation
     A_P = 0.35    # Amplitude of classification sorting modulation
     delta = 0.02  # Width of transition at crest
@@ -238,7 +241,7 @@ def compute_rhs(Q_in, t_val):
 
     # Spatial sorting on lee side: coarser at bottom/toe, finer near crest
     s = np.clip((x_cell - x_crest) / (L - x_crest), 0.0, 1.0)
-    alpha_spatial = 0.3 ###
+    alpha_spatial = 0.6
     P_spatial = np.maximum(0.1, 1.0 + alpha_spatial * (0.5 - s))
 
     # Temporal sorting modulation
@@ -265,7 +268,16 @@ def compute_rhs(Q_in, t_val):
     F_seg = np.zeros((Nx, Nz + 1))
     F_seg[:, 1:-1] = -q_seg * phi_in[:, 1:] * (1.0 - phi_in[:, :-1])
 
-    dF_deta = ((F_eta[:, 1:] - F_eta[:, :-1]) + (F_seg[:, 1:] - F_seg[:, :-1])) / deta
+    # 4. Diffusive flux in vertical (eta) - self-diffusion scaling (JFM 2021)
+    F_diff = np.zeros((Nx, Nz + 1))
+    if use_diffusion:
+        D_0 = 1.0e-4  # Maximum diffusivity coefficient [m^2/s]
+        h_max = H_base + H_d
+        # Diffusivity scaling: D(x) = D_0 * (h(x)/h_max)^2 to ensure stability
+        D_x = D_0 * (h_bed_2d / h_max) ** 2
+        F_diff[:, 1:-1] = - (D_x / h_bed_2d) * (phi_in[:, 1:] - phi_in[:, :-1]) / deta
+
+    dF_deta = ((F_eta[:, 1:] - F_eta[:, :-1]) + (F_seg[:, 1:] - F_seg[:, :-1]) + (F_diff[:, 1:] - F_diff[:, :-1])) / deta
 
     return -dF_dx - dF_deta
 
@@ -276,12 +288,6 @@ def compute_rhs(Q_in, t_val):
 def compute_t0_grid(t_val, X_p, Z_p):
     """
     Compute deposition time t₀ for each physical coordinate (x_p, z_p).
-
-    t₀(x_p, z_p) = t - (1/c_mig) * [(c_mig*t - x_p + x_dep0(z_p)) mod L]
-
-    where:
-        R(z_p) = 1 - (z_p - H_base) / H_d
-        x_dep0(z_p) = x_crest + R(z_p) * (L - x_crest)
     """
     R_z = 1.0 - (Z_p - H_base) / H_d
     R_z = np.clip(R_z, 0.0, 1.0)
@@ -290,64 +296,10 @@ def compute_t0_grid(t_val, X_p, Z_p):
     argument = (c_mig * t_val - X_p + x_dep_0) % L
     t_0_grid = t_val - (1.0 / c_mig) * argument
 
-    # Mask: only valid inside the dune body and for positive deposition times
     valid = (t_0_grid > 0) & (Z_p >= H_base * 0.5) & (Z_p <= h_bed[None, :].T if Z_p.shape == X_p.shape else True)
     t_0_grid = np.where(valid, t_0_grid, np.nan)
 
     return t_0_grid
-
-
-def draw_fan_lines(ax, t_val, X_p, Z_p, phi_t=None, n_lines=20, style='colored'):
-    """
-    Draw cross-stratification (foreset) fan lines on the given axes.
-
-    Parameters:
-        style: 'colored' - lines colored by average φ_s along the lamina
-               'mono'    - monochrome dashed lines
-    """
-    if t_val < 3.0:
-        return
-
-    t_0_grid = compute_t0_grid(t_val, X_p, Z_p)
-
-    # Generate lamina levels (equally spaced in deposition time)
-    dt_laminae = max(t_val / n_lines, 5.0)
-    lamina_levels = np.arange(dt_laminae, t_val, dt_laminae)
-
-    if len(lamina_levels) < 2:
-        return
-
-    if style == 'colored' and phi_t is not None:
-        # Color each foreset line by the average phi_s along it
-        cmap_fan = plt.cm.RdYlBu_r
-        norm_fan = mcolors.Normalize(vmin=0.3, vmax=1.0)
-
-        for level in lamina_levels:
-            # Find average phi_s along this isochrone
-            mask_near = np.abs(t_0_grid - level) < dt_laminae * 0.3
-            if np.any(mask_near & ~np.isnan(phi_t)):
-                avg_phi = np.nanmean(phi_t[mask_near])
-            else:
-                avg_phi = phi_s_target
-
-            color = cmap_fan(norm_fan(avg_phi))
-            try:
-                cs = ax.contour(
-                    X_p, Z_p, t_0_grid, levels=[level],
-                    colors=[color], linewidths=1.0, zorder=2.5
-                )
-            except Exception:
-                pass
-    else:
-        # Monochrome dashed lines
-        try:
-            ax.contour(
-                X_p, Z_p, t_0_grid, levels=lamina_levels,
-                colors='#333333', linewidths=0.8, linestyles='dashed',
-                alpha=0.6, zorder=2.5
-            )
-        except Exception:
-            pass
 
 
 # =====================================================================
@@ -357,227 +309,200 @@ outputs_dir = "outputs"
 os.makedirs(outputs_dir, exist_ok=True)
 video_path = os.path.join(outputs_dir, "duna_abanico.mp4")
 
-# VideoWriter properties
-vid_width, vid_height = 1280, 720
+vid_width, vid_height = 1280, 800
 fps = 15.0
 fourcc = cv2.VideoWriter_fourcc(*'mp4v')
 video_writer = cv2.VideoWriter(video_path, fourcc, fps, (vid_width, vid_height))
 
-# Setup Plotting Window for video
-fig_vid, ax_vid = plt.subplots(figsize=(12.8, 7.2), dpi=100)
+fig_vid, (ax_nodiff, ax_diff) = plt.subplots(2, 1, figsize=(12.8, 8.5), sharex=True, sharey=True)
 fig_vid.patch.set_facecolor('#ffffff')
 
-# Custom Colormap: White (phi_s = 0, large particles) -> Deep Red (phi_s = 1, fine particles)
 colors_cmap = [(1.0, 1.0, 1.0), (0.886, 0.106, 0.133)]
 cmap = mcolors.LinearSegmentedColormap.from_list('white_red', colors_cmap, N=256)
 
-# Draw colorbar once on a fixed axis
-plt.subplots_adjust(bottom=0.22, top=0.88, left=0.08, right=0.95)
-cb_ax_vid = fig_vid.add_axes([0.35, 0.07, 0.30, 0.03])
-norm = mcolors.Normalize(vmin=0.0, vmax=1.0)
-sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
-sm.set_array([])
-cb_vid = fig_vid.colorbar(sm, cax=cb_ax_vid, orientation='horizontal')
-cb_vid.set_label(r"Concentración de Sedimento Fino $\phi_s$", fontsize=11)
-cb_vid.set_ticks(np.linspace(0.0, 1.0, 6))
-cb_vid.ax.tick_params(direction='in', labelsize=9.5)
+plt.subplots_adjust(bottom=0.10, top=0.90, left=0.08, right=0.95, hspace=0.25)
 
-# Simulation loop parameters
 t_current = 0.0
 t_max = 300.0
 step = 0
 frame_interval = 2.0
 next_frame_time = 0.0
 
-# Storage for static figures and diagnostics
 target_static_times = [0.0, 30.0, 75.0, 150.0, 300.0]
-static_history = {}
-static_history[0.0] = phi_s.copy()
+static_history_nodiff = {0.0: phi_s_nodiff.copy()}
+static_history_diff = {0.0: phi_s_diff.copy()}
 
-# Mass conservation tracking
 mass_history_t = [0.0]
-mass_history_M = [1.0]  # Normalized M(t)/M(0)
-phi_avg_history = [phi_s_target]
+mass_history_M = [1.0]
 
 print("\n" + "=" * 60)
-print("Starting simulation: Bidisperse Dune with Fan Diagram")
+print("Starting simulation: Bidisperse Dune (No Diffusion vs With Diffusion)")
 print("=" * 60)
 start_wall = time.time()
 
 while t_current < t_max:
     dt_step = min(dt, t_max - t_current)
 
-    # Print diagnostics every 1000 steps
     if step % 1000 == 0:
-        phi_val = Q / h_bed_2d
-        mean_phi_weighted = np.sum(np.mean(phi_val, axis=1) * h_bed) / np.sum(h_bed)
-        M_current = np.sum(Q) * dx * deta
-        M_ratio = M_current / M_initial
+        mean_phi_weighted = np.sum(np.mean(Q_diff / h_bed_2d, axis=1) * h_bed) / np.sum(h_bed)
+        print(f"  Step {step:06d} | t = {t_current:7.2f} s | <φ_s>_diff = {mean_phi_weighted:.6f}")
 
-        mass_history_t.append(t_current)
-        mass_history_M.append(M_ratio)
-        phi_avg_history.append(mean_phi_weighted)
+    # No Diffusion
+    k1_nodiff = compute_rhs(Q_nodiff, t_current, use_diffusion=False)
+    Q1_nodiff = conserve_and_clip(Q_nodiff + dt_step * k1_nodiff, h_bed_2d)
+    k2_nodiff = compute_rhs(Q1_nodiff, t_current + dt_step, use_diffusion=False)
+    Q_nodiff = global_mass_correction(conserve_and_clip(0.5 * Q_nodiff + 0.5 * (Q1_nodiff + dt_step * k2_nodiff), h_bed_2d), h_bed_2d, M_initial)
 
-        print(f"  Step {step:06d} | t = {t_current:7.2f} s | "
-              f"<φ_s> = {mean_phi_weighted:.6f} | M(t)/M(0) = {M_ratio:.8f}")
-
-    # SSP-RK2 Time Integration (with time-dependent RHS)
-    k1 = compute_rhs(Q, t_current)
-    Q1 = Q + dt_step * k1
-    Q1 = conserve_and_clip(Q1, h_bed_2d)
-
-    k2 = compute_rhs(Q1, t_current + dt_step)
-    Q = 0.5 * Q + 0.5 * (Q1 + dt_step * k2)
-    Q = conserve_and_clip(Q, h_bed_2d)
-
-    # Global mass correction (strict conservation)
-    Q = global_mass_correction(Q, h_bed_2d, M_initial)
+    # With Diffusion
+    k1_diff = compute_rhs(Q_diff, t_current, use_diffusion=True)
+    Q1_diff = conserve_and_clip(Q_diff + dt_step * k1_diff, h_bed_2d)
+    k2_diff = compute_rhs(Q1_diff, t_current + dt_step, use_diffusion=True)
+    Q_diff = global_mass_correction(conserve_and_clip(0.5 * Q_diff + 0.5 * (Q1_diff + dt_step * k2_diff), h_bed_2d), h_bed_2d, M_initial)
 
     t_current += dt_step
     step += 1
 
-    # Store static history if matching target times
     for t_target in target_static_times:
         if abs(t_current - t_target) < 0.5 * dt:
-            static_history[t_target] = (Q / h_bed_2d).copy()
+            static_history_nodiff[t_target] = (Q_nodiff / h_bed_2d).copy()
+            static_history_diff[t_target] = (Q_diff / h_bed_2d).copy()
 
-    # Write video frame
     if t_current >= next_frame_time:
-        phi_t = Q / h_bed_2d
+        phi_t_nodiff = Q_nodiff / h_bed_2d
+        phi_t_diff = Q_diff / h_bed_2d
 
-        ax_vid.clear()
-
-        # Plot concentration field
-        ax_vid.pcolormesh(X_phys, Z_phys, phi_t, cmap=cmap,
-                          vmin=0.0, vmax=1.0, shading='gouraud', zorder=1)
-
-        # Smooth contours
+        ax_nodiff.clear()
+        ax_diff.clear()
+        
         zoom_factor = 3
-        phi_zoomed = ndimage.zoom(phi_t, zoom_factor, order=3)
-        phi_zoomed = np.clip(phi_zoomed, 0.0, 1.0)
-        x_zoom = np.linspace(0, L, phi_zoomed.shape[0])
-        eta_zoom = np.linspace(0, 1.0, phi_zoomed.shape[1])
+        x_zoom = np.linspace(0, L, Nx * zoom_factor)
+        eta_zoom = np.linspace(0, 1.0, Nz * zoom_factor)
         X_zoom, Eta_zoom = np.meshgrid(x_zoom, eta_zoom, indexing='ij')
         h_zoom = np.interp(x_zoom, x_cell, h_bed)
         Z_zoom = Eta_zoom * h_zoom[:, None]
-        if t_current > 0.5:
-            ax_vid.contour(X_zoom, Z_zoom, phi_zoomed,
-                           levels=np.linspace(0.1, 0.9, 9),
-                           colors='black', linewidths=0.4, zorder=2)
-            ax_vid.contour(X_zoom, Z_zoom, phi_zoomed,
-                           levels=[0.02, 0.98],
-                           colors='black', linewidths=1.2, zorder=3)
 
-        # Draw boundaries
-        ax_vid.plot(x_cell, h_bed, color='black', linewidth=2.0, zorder=4)
-        ax_vid.axhline(0, color='black', linewidth=1.0, zorder=4)
+        ax_nodiff.pcolormesh(X_phys, Z_phys, phi_t_nodiff, cmap=cmap, vmin=0.0, vmax=1.0, shading='gouraud', zorder=1)
+        ax_diff.pcolormesh(X_phys, Z_phys, phi_t_diff, cmap=cmap, vmin=0.0, vmax=1.0, shading='gouraud', zorder=1)
+        
+        for ax, phi_t in [(ax_nodiff, phi_t_nodiff), (ax_diff, phi_t_diff)]:
+            if t_current > 0.5:
+                phi_zoomed = ndimage.zoom(phi_t, zoom_factor, order=3)
+                phi_zoomed = np.clip(phi_zoomed, 0.0, 1.0)
+                ax.contour(X_zoom, Z_zoom, phi_zoomed, levels=np.linspace(0.1, 0.9, 9), colors='black', linewidths=0.4, zorder=2)
+                ax.contour(X_zoom, Z_zoom, phi_zoomed, levels=[0.02, 0.98], colors='black', linewidths=1.2, zorder=3)
+            ax.plot(x_cell, h_bed, color='black', linewidth=1.8, zorder=4)
+            ax.axhline(0, color='black', linewidth=1.0, zorder=4)
+            ax.set_xlim(0, L)
+            ax.set_ylim(-0.005, H_base + H_d + 0.015)
+            ax.tick_params(direction='in', top=True, right=True, labelsize=9)
 
-        # Styling
-        ax_vid.set_title("Evolución Temporal de la Segregación Interna en la Duna",
-                         fontsize=14, fontweight='bold', pad=10)
-        ax_vid.text(0.02, 0.92, f"Tiempo Físico: {t_current:.1f} s",
-                    transform=ax_vid.transAxes, fontsize=12, fontweight='bold',
-                    bbox=dict(facecolor='white', alpha=0.8, edgecolor='none',
-                              boxstyle='round,pad=0.2'))
-
-        ax_vid.set_xlim(0, L)
-        ax_vid.set_ylim(-0.005, H_base + H_d + 0.015)
-        ax_vid.set_ylabel("$z$ (m)", fontsize=12)
-        ax_vid.set_xlabel("$x$ (m)", fontsize=12)
-        ax_vid.tick_params(direction='in', top=True, right=True, labelsize=10)
-
-        # Convert frame to image for video writing
+        ax_nodiff.set_title("Caso Sin Difusión (Gajjar & Gray, 2014)", fontsize=12, fontweight='bold')
+        ax_diff.set_title("Caso Con Difusión (Trewhela et al., 2021)", fontsize=12, fontweight='bold')
+        ax_diff.set_xlabel("$x$ (m)", fontsize=11)
+        ax_nodiff.set_ylabel("$z$ (m)", fontsize=11)
+        ax_diff.set_ylabel("$z$ (m)", fontsize=11)
+        ax_nodiff.text(0.02, 0.88, f"Tiempo: {t_current:.1f} s", transform=ax_nodiff.transAxes, fontsize=11, fontweight='bold', bbox=dict(facecolor='white', alpha=0.8, edgecolor='none', boxstyle='round,pad=0.2'))
+        
         fig_vid.canvas.draw()
         img = np.asarray(fig_vid.canvas.buffer_rgba())
-        img_bgr = cv2.cvtColor(img, cv2.COLOR_RGBA2BGR)
-        img_resized = cv2.resize(img_bgr, (vid_width, vid_height))
-        video_writer.write(img_resized)
-
+        video_writer.write(cv2.resize(cv2.cvtColor(img, cv2.COLOR_RGBA2BGR), (vid_width, vid_height)))
         next_frame_time += frame_interval
-
-# Final diagnostics
-phi_final = Q / h_bed_2d
-mean_phi_final = np.sum(np.mean(phi_final, axis=1) * h_bed) / np.sum(h_bed)
-M_final = np.sum(Q) * dx * deta
-mass_history_t.append(t_current)
-mass_history_M.append(M_final / M_initial)
-phi_avg_history.append(mean_phi_final)
 
 video_writer.release()
 plt.close(fig_vid)
 print(f"\nVideo saved to: {video_path}")
-print(f"Simulation finished in {time.time() - start_wall:.2f} seconds.")
-print(f"Final <φ_s> = {mean_phi_final:.6f}, M(t_final)/M(0) = {M_final/M_initial:.8f}")
-
-# =====================================================================
-# 6. GENERATE STATIC 5-PANEL FAN DIAGRAM (Main Output)
-# =====================================================================
-print("\n" + "=" * 60)
-print("Generating 5-panel fan diagram...")
 print("=" * 60)
 
-fig, axes = plt.subplots(5, 1, figsize=(11, 13), sharex=True, sharey=True)
+# Create a 5x2 grid: columns represent [Sin Difusión, Con Difusión]
+fig, axes = plt.subplots(5, 2, figsize=(14, 13), sharex=True, sharey=True)
 panels = ['a', 'b', 'c', 'd', 'e']
 
+# Set titles for columns
+axes[0, 0].set_title("Caso Sin Difusión (Gajjar & Gray, 2014)", fontsize=12, fontweight='bold', pad=10)
+axes[0, 1].set_title("Caso Con Difusión (Trewhela et al., 2021)", fontsize=12, fontweight='bold', pad=10)
+
 for idx, t_val in enumerate(target_static_times):
-    ax = axes[idx]
-    phi_t = static_history.get(t_val, next(iter(static_history.values())))
+    phi_nodiff = static_history_nodiff.get(t_val, next(iter(static_history_nodiff.values())))
+    phi_diff = static_history_diff.get(t_val, next(iter(static_history_diff.values())))
 
-    # Plot concentration field
-    im = ax.pcolormesh(X_phys, Z_phys, phi_t, cmap=cmap,
-                       vmin=0.0, vmax=1.0, shading='gouraud', zorder=1)
-
+    # --- Left Column: No Diffusion ---
+    ax_l = axes[idx, 0]
+    im_l = ax_l.pcolormesh(X_phys, Z_phys, phi_nodiff, cmap=cmap,
+                           vmin=0.0, vmax=1.0, shading='gouraud', zorder=1)
     if t_val > 0.0:
-        # Smooth contours for phi_s isolines
         zoom_factor = 3
-        phi_zoomed = ndimage.zoom(phi_t, zoom_factor, order=3)
+        phi_zoomed = ndimage.zoom(phi_nodiff, zoom_factor, order=3)
         phi_zoomed = np.clip(phi_zoomed, 0.0, 1.0)
         x_zoom = np.linspace(0, L, phi_zoomed.shape[0])
         eta_zoom = np.linspace(0, 1.0, phi_zoomed.shape[1])
         X_zoom, Eta_zoom = np.meshgrid(x_zoom, eta_zoom, indexing='ij')
         h_zoom = np.interp(x_zoom, x_cell, h_bed)
         Z_zoom = Eta_zoom * h_zoom[:, None]
+        ax_l.contour(X_zoom, Z_zoom, phi_zoomed,
+                     levels=np.linspace(0.1, 0.9, 9),
+                     colors='black', linewidths=0.4, zorder=2)
+        ax_l.contour(X_zoom, Z_zoom, phi_zoomed,
+                     levels=[0.02, 0.98],
+                     colors='black', linewidths=1.2, zorder=3)
+    ax_l.plot(x_cell, h_bed, color='black', linewidth=1.5, zorder=4)
+    ax_l.axhline(0, color='black', linewidth=1.0, zorder=4)
+    ax_l.text(-0.05, 1.02, f"({panels[idx]}1)", transform=ax_l.transAxes,
+              fontsize=11, style='italic', weight='bold', va='bottom', ha='right')
+    ax_l.text(0.02, 0.06, f"t = {int(t_val)} s", transform=ax_l.transAxes,
+              fontsize=10, va='bottom', ha='left',
+              bbox=dict(facecolor='white', alpha=0.8, edgecolor='none', boxstyle='round,pad=0.2'))
+    ax_l.set_xlim(0, L)
+    ax_l.set_ylim(-0.005, H_base + H_d + 0.015)
+    ax_l.set_ylabel("$z$ (m)", fontsize=11)
+    ax_l.tick_params(direction='in', top=True, right=True, labelsize=9)
 
-        ax.contour(X_zoom, Z_zoom, phi_zoomed,
-                   levels=np.linspace(0.1, 0.9, 9),
-                   colors='black', linewidths=0.4, zorder=2)
-        ax.contour(X_zoom, Z_zoom, phi_zoomed,
-                   levels=[0.02, 0.98],
-                   colors='black', linewidths=1.2, zorder=3)
+    # --- Right Column: With Diffusion ---
+    ax_r = axes[idx, 1]
+    im_r = ax_r.pcolormesh(X_phys, Z_phys, phi_diff, cmap=cmap,
+                           vmin=0.0, vmax=1.0, shading='gouraud', zorder=1)
+    if t_val > 0.0:
+        zoom_factor = 3
+        phi_zoomed = ndimage.zoom(phi_diff, zoom_factor, order=3)
+        phi_zoomed = np.clip(phi_zoomed, 0.0, 1.0)
+        x_zoom = np.linspace(0, L, phi_zoomed.shape[0])
+        eta_zoom = np.linspace(0, 1.0, phi_zoomed.shape[1])
+        X_zoom, Eta_zoom = np.meshgrid(x_zoom, eta_zoom, indexing='ij')
+        h_zoom = np.interp(x_zoom, x_cell, h_bed)
+        Z_zoom = Eta_zoom * h_zoom[:, None]
+        ax_r.contour(X_zoom, Z_zoom, phi_zoomed,
+                     levels=np.linspace(0.1, 0.9, 9),
+                     colors='black', linewidths=0.4, zorder=2)
+        ax_r.contour(X_zoom, Z_zoom, phi_zoomed,
+                     levels=[0.02, 0.98],
+                     colors='black', linewidths=1.2, zorder=3)
+    ax_r.plot(x_cell, h_bed, color='black', linewidth=1.5, zorder=4)
+    ax_r.axhline(0, color='black', linewidth=1.0, zorder=4)
+    ax_r.text(-0.05, 1.02, f"({panels[idx]}2)", transform=ax_r.transAxes,
+              fontsize=11, style='italic', weight='bold', va='bottom', ha='right')
+    ax_r.text(0.02, 0.06, f"t = {int(t_val)} s", transform=ax_r.transAxes,
+              fontsize=10, va='bottom', ha='left',
+              bbox=dict(facecolor='white', alpha=0.8, edgecolor='none', boxstyle='round,pad=0.2'))
+    ax_r.set_xlim(0, L)
+    ax_r.set_ylim(-0.005, H_base + H_d + 0.015)
+    ax_r.tick_params(direction='in', top=True, right=True, labelsize=9)
 
-    # Draw boundaries
-    ax.plot(x_cell, h_bed, color='black', linewidth=1.5, zorder=4)
-    ax.axhline(0, color='black', linewidth=1.0, zorder=4)
+axes[-1, 0].set_xlabel("$x$ (m)", fontsize=12)
+axes[-1, 1].set_xlabel("$x$ (m)", fontsize=12)
+plt.subplots_adjust(bottom=0.12, top=0.93, left=0.07, right=0.97, hspace=0.24, wspace=0.12)
 
-    # Panel label and time
-    ax.text(-0.04, 1.02, f"({panels[idx]})", transform=ax.transAxes,
-            fontsize=11, style='italic', weight='bold', va='bottom', ha='right')
-    ax.text(0.02, 0.06, f"t = {int(t_val)} s", transform=ax.transAxes,
-            fontsize=10, va='bottom', ha='left',
-            bbox=dict(facecolor='white', alpha=0.8, edgecolor='none',
-                      boxstyle='round,pad=0.2'))
-
-    ax.set_xlim(0, L)
-    ax.set_ylim(-0.005, H_base + H_d + 0.015)
-    ax.set_ylabel("$z$ (m)", fontsize=11)
-    ax.tick_params(direction='in', top=True, right=True, labelsize=10)
-
-axes[-1].set_xlabel("$x$ (m)", fontsize=12)
-plt.subplots_adjust(bottom=0.12, top=0.94, left=0.08, right=0.96, hspace=0.22)
-
-# Colorbar
+# Colorbar at the bottom
 cb_ax = fig.add_axes([0.30, 0.04, 0.40, 0.015])
-cb = fig.colorbar(im, cax=cb_ax, orientation='horizontal')
+cb = fig.colorbar(im_l, cax=cb_ax, orientation='horizontal')
 cb.set_label(r"Concentración de Sedimento Fino $\phi_s$", fontsize=11)
 cb.set_ticks(np.linspace(0.0, 1.0, 6))
 cb.ax.tick_params(direction='in', labelsize=9.5)
 
-plt.suptitle("Evolución Temporal de la Concentración en Duna Bidispersa",
-             fontsize=14, fontweight='bold', y=0.975)
+plt.suptitle("Evolución Temporal de la Concentración: Sin Difusión vs Con Difusión",
+             fontsize=14, fontweight='bold', y=0.97)
 
 fan_5panel_path = os.path.join(outputs_dir, "fan_diagram_dune.png")
 plt.savefig(fan_5panel_path, dpi=300)
-print(f"Saved 5-panel fan diagram to: {fan_5panel_path}")
+print(f"Saved 5-panel comparativo to: {fan_5panel_path}")
 plt.close(fig)
 
 # =====================================================================

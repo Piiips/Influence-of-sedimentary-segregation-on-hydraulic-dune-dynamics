@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.3.1)  23 JUN 2026 16:36
+This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.3.1)  23 JUN 2026 17:08
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -533,25 +533,34 @@ Package hyperref Warning: Token not allowed in a PDF string (Unicode):
 [2] [3]
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 139.
+(hyperref)                removing `math shift' on input line 157.
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `\omega' on input line 139.
+(hyperref)                removing `math shift' on input line 157.
+
+[4]
+
+Package hyperref Warning: Token not allowed in a PDF string (Unicode):
+(hyperref)                removing `math shift' on input line 175.
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `\ge' on input line 139.
+(hyperref)                removing `\omega' on input line 175.
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 145.
+(hyperref)                removing `\ge' on input line 175.
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `\omega' on input line 145.
+(hyperref)                removing `math shift' on input line 181.
 
-[4] [5] (./desarrollo_matematico.aux
+
+Package hyperref Warning: Token not allowed in a PDF string (Unicode):
+(hyperref)                removing `\omega' on input line 181.
+
+[5] (./desarrollo_matematico.aux
 LaTeX Info: Redefining \. on input line 11.
 LaTeX Info: Redefining \% on input line 11.
 )
@@ -560,16 +569,16 @@ LaTeX2e <2025-11-01>
 L3 programming layer <2026-01-19>
  ***********
 Package rerunfilecheck Info: File `desarrollo_matematico.out' has not changed.
-(rerunfilecheck)             Checksum: 83473224F0345BC1255C336C50A02FFB;2727.
+(rerunfilecheck)             Checksum: 03D7267DE953BC88775C3A8EA7F2E9BE;3299.
  ) 
 Here is how much of TeX's memory you used:
- 13876 strings out of 469006
- 216815 string characters out of 5454814
- 689215 words of memory out of 5000000
- 42330 multiletter control sequences out of 15000+600000
- 639801 words of font info for 111 fonts, out of 8000000 for 9000
+ 13894 strings out of 469006
+ 216991 string characters out of 5454814
+ 689218 words of memory out of 5000000
+ 42332 multiletter control sequences out of 15000+600000
+ 640005 words of font info for 115 fonts, out of 8000000 for 9000
  319 hyphenation exceptions out of 8191
- 75i,12n,79p,1018b,496s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 75i,12n,79p,1018b,489s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx1
 0.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/c
 mbx12.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/
@@ -585,10 +594,10 @@ nts/type1/public/amsfonts/cm/cmr8.pfb></usr/local/texlive/2026basic/texmf-dist/
 fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/local/texlive/2026basic/texmf-d
 ist/fonts/type1/public/amsfonts/cm/cmsy8.pfb></usr/local/texlive/2026basic/texm
 f-dist/fonts/type1/public/amsfonts/cm/cmtt10.pfb>
-Output written on desarrollo_matematico.pdf (5 pages, 188310 bytes).
+Output written on desarrollo_matematico.pdf (5 pages, 196207 bytes).
 PDF statistics:
- 197 PDF objects out of 1000 (max. 8388607)
- 160 compressed objects within 2 object streams
- 44 named destinations out of 1000 (max. 500000)
- 25185 words of extra memory for PDF output out of 29859 (max. 10000000)
+ 214 PDF objects out of 1000 (max. 8388607)
+ 177 compressed objects within 2 object streams
+ 52 named destinations out of 1000 (max. 500000)
+ 25201 words of extra memory for PDF output out of 29859 (max. 10000000)
 

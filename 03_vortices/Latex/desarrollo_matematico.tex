@@ -118,10 +118,10 @@ Esto demuestra que el campo de velocidades es exactamente libre de divergencia p
 
 ---
 
-\section{Ecuación de Advección-Segregación}
+\section{Ecuación de Advección-Segregación-Difusión}
 La conservación de la fracción de partículas finas $\phi_s(x, \eta, t)$ está gobernada por:
 \begin{equation}
-\frac{\partial Q}{\partial t} = -\frac{\partial (u Q)}{\partial x} - \frac{\partial}{\partial \eta} \left( \omega \phi_s + F_{\text{seg}} \right)
+\frac{\partial Q}{\partial t} = -\frac{\partial (u Q)}{\partial x} - \frac{\partial}{\partial \eta} \left( \omega \phi_s + F_{\text{seg}} + F_{\text{diff}} \right)
 \end{equation}
 donde:
 \begin{itemize}
@@ -129,7 +129,43 @@ donde:
     \item $u Q$ es el flujo advectivo horizontal.
     \item $\omega \phi_s$ es el flujo advectivo vertical en coordenadas sigma.
     \item $F_{\text{seg}} = - q_{\text{seg}} \phi_s (1 - \phi_s)$ es el flujo de segregación por gravedad ($q_{\text{seg}}$ es la velocidad máxima de segregación).
+    \item $F_{\text{diff}}$ es el flujo difusivo vertical neto en coordenadas sigma, desarrollado en la siguiente sección.
 \end{itemize}
+
+---
+
+\section{El Término Difusivo y su Regularización}
+De acuerdo con los artículos de Gajjar \& Gray (2014) y Trewhela et al. (2021), el término difusivo representa la auto-difusión granular inducida por cizalla. En coordenadas físicas $(x, z)$, este término es:
+\begin{equation}
+\text{Flujo Difusivo Físico} = \frac{\partial}{\partial z} \left( D \frac{\partial \phi_s}{\partial z} \right)
+\end{equation}
+
+Aplicando la regla de la cadena para la coordenada sigma $\eta = z/h(x)$, el gradiente vertical físico es $\frac{\partial}{\partial z} = \frac{1}{h(x)} \frac{\partial}{\partial \eta}$, lo que nos da:
+\begin{equation}
+\frac{\partial}{\partial z} \left( D \frac{\partial \phi_s}{\partial z} \right) = \frac{1}{h(x)} \frac{\partial}{\partial \eta} \left( \frac{D}{h(x)} \frac{\partial \phi_s}{\partial \eta} \right)
+\end{equation}
+
+Al multiplicar por el jacobiano $h(x)$ para formular la ecuación de conservación de $Q$, el término en el resolvedor sigma resulta en:
+\begin{equation}
+F_{\text{diff}} = - \frac{D}{h(x)} \frac{\partial \phi_s}{\partial \eta}
+\end{equation}
+lo que introduce en la ecuación temporal de $Q$ el término positivo de difusión:
+\begin{equation}
+-\frac{\partial F_{\text{diff}}}{\partial \eta} = \frac{\partial}{\partial \eta} \left( \frac{D}{h(x)} \frac{\partial \phi_s}{\partial \eta} \right)
+\end{equation}
+
+\subsection{Regularización de la Difusividad $D(x)$}
+Para evitar la severa restricción en el paso de tiempo numérico $\Delta t_{\text{diff}} \propto \frac{\Delta \eta^2 h(x)^2}{2 D}$ en las regiones muy delgadas de la duna (como el trough donde $h(x) \to H_{\text{base}} = 0.01$ m), implementamos una ley de escala regularizada para $D(x)$ que escala con la altura local al cuadrado:
+\begin{equation}
+D(x) = D_0 \cdot \left( \frac{h(x)}{H_{\text{base}} + H_d} \right)^2
+\end{equation}
+donde $D_0 = 1.0 \times 10^{-4} \text{ m}^2\text{/s}$ es el coeficiente de difusividad máximo.
+
+Al sustituir esta ley en el factor de escala difusivo del resolvedor:
+\begin{equation}
+\frac{D(x)}{h(x)} = \frac{D_0 h(x)}{(H_{\text{base}} + H_d)^2}
+\end{equation}
+Esta formulación cancela la restricción hiperbólica de paso de tiempo en las zonas de lecho delgado y estabiliza el resolvedor sin comprometer el rendimiento numérico.
 
 ---
 
