@@ -1,0 +1,94 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{geometry}
+\usepackage{hyperref}
+
+\geometry{left=2.5cm, right=2.5cm, top=3cm, bottom=3cm}
+
+\title{\textbf{Desarrollo Matemático del Modelo de Difusión-Advección-Segregación (V2)\\ para Dunas Bidispersas}}
+\author{Felipe Espinoza}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Introducción}
+El modelo original de migración de dunas bidispersas asumía una segregación simétrica ideal, en la cual las partículas finas percolan hacia el fondo del lecho de forma constante y sin mezcla. El modelo V2 expande esta base integrando las leyes empíricas de escalamiento de segregación propuestas por Gajjar \& Gray (2014) y Trewhela, Ancey \& Gray (2021). Este modelo asume que el flujo segregativo es asimétrico y depende fuertemente de la tasa de cizalle ($\dot{\gamma}$), introduciendo además un proceso de re-mezcla o difusión cinemática gobernado por las colisiones entre partículas.
+
+\section{Ecuación Gobernante}
+La conservación de la fracción volumétrica de sedimentos finos $\phi$ en un dominio 2D $(x, z)$ sujeto a advección, segregación gravitacional y difusión cinemática está dada por:
+\begin{equation}
+    \frac{\partial \phi}{\partial t} + \frac{\partial (u \phi)}{\partial x} + \frac{\partial (w \phi)}{\partial z} + \frac{\partial F_{seg}}{\partial z} = \frac{\partial}{\partial z} \left( D_{sl} \frac{\partial \phi}{\partial z} \right)
+\end{equation}
+donde $u$ y $w$ son las velocidades advectivas horizontal y vertical respectivamente, $F_{seg}$ es el flujo físico vertical de segregación, y $D_{sl}$ es el coeficiente de difusión cinemática local.
+
+\section{Transformación a Coordenadas $\eta$}
+Para ajustarse a la topografía variable de la duna $h(x,t)$, se emplea la coordenada normalizada $\eta$:
+\begin{equation}
+    \eta = \frac{z - H_{base}}{h(x,t) - H_{base}}
+\end{equation}
+Asumiendo $H_{base} = 0$ para simplificar, $\eta = z/h(x,t)$. Bajo esta transformación, los flujos conservativos verticales mapean directamente. Multiplicando la ecuación gobernante por $h(x,t)$ obtenemos la formulación usada en el código para la altura de finos equivalente $Q = h \phi$:
+\begin{equation}
+    \frac{\partial Q}{\partial t} + \frac{\partial (u Q)}{\partial x} + \frac{\partial F_\eta}{\partial \eta} = 0
+\end{equation}
+donde el flujo vertical total en $\eta$ es $F_\eta = F_{adv} + F_{seg,\eta} - F_{diff,\eta}$.
+
+\section{Perfil de Velocidades y Tasa de Cizalle ($\dot{\gamma}$)}
+La física de la segregación granular es gobernada por la fricción de corte entre capas. A partir del perfil de velocidades modulado horizontal $u$:
+\begin{equation}
+    u(x, \eta, t) = \frac{U_0 H_{base}}{h(x)} (m+1) \eta^m g(x, t) - c_{mig}
+\end{equation}
+La tasa de cizalle física en profundidad ($z$) se recupera mediante la regla de la cadena $\partial_z = \frac{1}{h}\partial_\eta$:
+\begin{equation}
+    \dot{\gamma} = \left| \frac{\partial u}{\partial z} \right| = \left| \frac{1}{h} \frac{\partial u}{\partial \eta} \right| = \frac{U_0 H_{base}}{h(x)^2} m(m+1) \eta^{m-1} |g(x,t)|
+\end{equation}
+Esta dependencia en $\eta^{m-1}$ implica que tanto la segregación como la difusión serán máximas cerca de la superficie superficial ($\eta=1$) y nulas en el fondo estático de la duna ($\eta=0$).
+
+\section{Leyes de Escala de Trewhela et al. (2021)}
+Sean $d_l$ y $d_s$ los diámetros de la partícula gruesa y fina respectivamente. Definimos la razón de tamaños $R = d_l / d_s$ y el diámetro promedio ponderado local:
+\begin{equation}
+    \bar{d} = (1-\phi) d_l + \phi d_s
+\end{equation}
+
+\subsection{Asimetría y Flujo de Segregación}
+La función que modela la dependencia empírica asimétrica de los tamaños está dada por:
+\begin{equation}
+    \mathcal{F}(R, \phi) = (R-1) + \mathcal{E} (1-\phi) (R-1)^2
+\end{equation}
+donde $\mathcal{E} \approx 2.0957$. 
+
+La magnitud escalar de la velocidad de segregación, $f_{sl}$, decae con la presión litostática (peso del material superior). Sabiendo que $p = \rho_* g \Phi h (1-\eta)$, la formulación de Gajjar \& Gray toma la forma computacional:
+\begin{equation}
+    f_{sl} = \frac{\mathcal{B} \, \dot{\gamma} \, \bar{d}^2}{\mathcal{C} \, \bar{d} + \Phi \, h (1-\eta)} \mathcal{F}(R, \phi)
+\end{equation}
+donde $\mathcal{B} \approx 0.3744$, $\mathcal{C} \approx 0.2712$, y $\Phi$ es la fracción de sólidos (típicamente $0.6$).
+
+El flujo segregativo neto (que impulsa los finos hacia abajo) se escribe en diferencias finitas upwind como:
+\begin{equation}
+    F_{seg, \eta} = -f_{sl} \, \phi (1-\phi)
+\end{equation}
+
+\subsection{Flujo Difusivo}
+La agitación inducida por el cizalle genera re-mezcla proporcional a $\dot{\gamma}$ y al diámetro local al cuadrado. La difusividad escalar $D_{sl}$ es:
+\begin{equation}
+    D_{sl} = \mathcal{A} \, \dot{\gamma} \, \bar{d}^2
+\end{equation}
+donde $\mathcal{A} \approx 0.108$. 
+El flujo de difusión en coordenadas $\eta$ introduce el jacobiano $1/h$ al derivar:
+\begin{equation}
+    F_{diff, \eta} = \frac{D_{sl}}{h} \frac{\partial \phi}{\partial \eta}
+\end{equation}
+
+\section{Restricciones Numéricas y Estabilidad}
+La introducción del término $F_{diff, \eta}$ transforma la EDO ordinaria hiperbólica del sistema en una ecuación parabólica. Para resolverla usando el método explícito (e.g. Euler o SSP-RK2), el paso temporal computacional $\Delta t$ queda gobernado de forma estricta por la condición de Courant-Friedrichs-Lewy (CFL) difusiva:
+\begin{equation}
+    \Delta t_{diff} \le \frac{(\Delta z_{min})^2}{2 \max(D_{sl})} = \frac{(\Delta \eta \cdot h_{min})^2}{2 \max(D_{sl})}
+\end{equation}
+Dado que el paso de malla vertical $\Delta \eta$ se encuentra al cuadrado, la inclusión de difusión explícita impone pasos de tiempo muy inferiores ($\sim \mathcal{O}(10^{-5})$ s) a los requeridos por la advección pura.
+
+\end{document}

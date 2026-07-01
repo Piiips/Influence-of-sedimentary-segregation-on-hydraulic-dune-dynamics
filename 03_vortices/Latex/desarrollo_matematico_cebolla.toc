@@ -1,0 +1,13 @@
+\babel@toc {spanish}{}\relax 
+\contentsline {section}{\numberline {1}Introducción y Concepto Físico}{2}{section.1}%
+\contentsline {section}{\numberline {2}Geometría y Sistemas de Referencia}{2}{section.2}%
+\contentsline {subsection}{\numberline {2.1}Sistema del Laboratorio vs. Sistema de la Duna}{2}{subsection.2.1}%
+\contentsline {subsection}{\numberline {2.2}Perfil Topográfico de la Duna}{2}{subsection.2.2}%
+\contentsline {section}{\numberline {3}Transformación a Coordenadas Sigma (\(\eta \))}{2}{section.3}%
+\contentsline {section}{\numberline {4}Campo de Velocidades del Fluido}{3}{section.4}%
+\contentsline {subsection}{\numberline {4.1}Función de Corriente Modulada}{3}{subsection.4.1}%
+\contentsline {subsection}{\numberline {4.2}Derivación de las Velocidades del resolvedor}{3}{subsection.4.2}%
+\contentsline {section}{\numberline {5}Ecuación de Advección-Segregación}{4}{section.5}%
+\contentsline {section}{\numberline {6}Condiciones de Borde del Sistema}{4}{section.6}%
+\contentsline {section}{\numberline {7}Parámetros de la Simulación}{4}{section.7}%
+\contentsline {section}{\numberline {8}Algoritmo Numérico y Conservación}{4}{section.8}%

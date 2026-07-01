@@ -1,0 +1,209 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{microtype}
+\usepackage{xcolor}
+
+\geometry{top=2.5cm, bottom=2.5cm, left=2.5cm, right=2.5cm}
+
+\title{\textbf{Desarrollo Matemático Completo y Parámetros del Modelo de Capas de Cebolla (\texttt{Cebolla.py})}}
+\author{Monografía Técnica de la Dinámica Interna de Dunas Bidispersas}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+\newpage
+
+\section{Introducción y Concepto Físico}
+El script \texttt{Cebolla.py} implementa un resolvedor numérico para la ecuación en derivadas parciales (PDE) de advección-segregación en coordenadas sigma de volumen de control. Este modelo simula la dinámica interna de partículas bidispersas (finas y gruesas) dentro de una duna que migra de forma estacionaria.
+
+El modelo se rige por un **ciclo cerrado de transporte y reciclaje de partículas**:
+\begin{enumerate}
+    \item \textbf{Capa Activa (Barlovento / Stoss)}: Las partículas situadas en la capa superficial de barlovento son transportadas por la corriente hacia la cresta de la duna por advección horizontal.
+    \item \textbf{Deposición en Sotavento (Lee)}: Al sobrepasar la cresta, las partículas caen por la cara de sotavento, depositándose en capas sucesivas (\emph{onion skins}). Estas capas muestran una clasificación granulométrica espacial (gruesos al fondo, finos arriba) y una modulación temporal (debido a fluctuaciones del flujo).
+    \item \textbf{Reciclaje y Emergencia}: Dado que la duna avanza a velocidad $c_{\text{mig}}$, el lecho aguas arriba es erosionado progresivamente. Esto provoca que las capas depositadas con anterioridad emerjan de nuevo en la superficie de barlovento, reingresando a la capa activa y cerrando el ciclo físico.
+\end{enumerate}
+
+---
+
+\section{Geometría y Sistemas de Referencia}
+
+\subsection{Sistema del Laboratorio vs. Sistema de la Duna}
+Definimos la duna de longitud $L_{\text{dune}}$ moviéndose hacia la derecha a una velocidad de migración constante $c_{\text{mig}}$.
+* **Marco de la Duna (Móvil)**: Coordenada horizontal $x' \in [0, L_{\text{dune}}]$, donde la forma de la duna $h(x')$ es estacionaria.
+* **Marco de Laboratorio (Fijo)**: Coordenada $x_{\text{lab}} = x' + c_{\text{mig}} t$.
+
+\subsection{Perfil Topográfico de la Duna}
+La topografía $h(x')$ se define de forma lineal por tramos en el marco móvil:
+\begin{equation}
+h(x') = \begin{cases} 
+H_{\text{base}} + H_d \left( \frac{x'}{x_{\text{crest\_offset}}} \right), & \text{si } 0 \le x' \le x_{\text{crest\_offset}} \quad \text{(Barlovento / Stoss)} \\
+H_{\text{base}} + H_d \left( 1 - \frac{x' - x_{\text{crest\_offset}}}{L_{\text{lee}}} \right), & \text{si } x_{\text{crest\_offset}} < x' \le L_{\text{dune}} \quad \text{(Sotavento / Lee)}
+\end{cases}
+\end{equation}
+donde $L_{\text{lee}} = L_{\text{dune}} - x_{\text{crest\_offset}}$ es la longitud de la cara de sotavento.
+
+La pendiente topográfica $\frac{dh}{dx'}$ es constante por secciones:
+\begin{equation}
+\frac{dh}{dx'} = \begin{cases} 
+\frac{H_d}{x_{\text{crest\_offset}}} > 0, & \text{si } 0 \le x' \le x_{\text{crest\_offset}} \\
+-\frac{H_d}{L_{\text{lee}}} < 0, & \text{si } x_{\text{crest\_offset}} < x' \le L_{\text{dune}}
+\end{cases}
+\end{equation}
+
+---
+
+\section{Transformación a Coordenadas Sigma (\(\eta\))}
+Para resolver las ecuaciones en una malla computacional rectangular regular, transformamos la coordenada vertical física $z$ (que va de $0$ a $h(x')$) a la coordenada sigma adimensional $\eta \in [0, 1]$:
+\begin{equation}
+\eta = \frac{z}{h(x')}
+\end{equation}
+Las derivadas parciales en el marco de la duna se transforman de la siguiente manera:
+\begin{align}
+\frac{\partial}{\partial z} &= \frac{1}{h(x')} \frac{\partial}{\partial \eta} \\
+\frac{\partial}{\partial x'}\Big|_z &= \frac{\partial}{\partial x'}\Big|_{\eta} - \frac{\eta}{h(x')} \frac{dh}{dx'} \frac{\partial}{\partial \eta}
+\end{align}
+
+---
+
+\section{Campo de Velocidades del Fluido}
+
+\subsection{Función de Corriente Modulada}
+Para imponer un flujo incompresible con modulación temporal periódica en la deposición, definimos la función de corriente en el marco del laboratorio $\psi_{\text{lab}}(x', \eta, t)$ como:
+\begin{equation}
+\psi_{\text{lab}}(x', \eta, t) = U_0 H_{\text{base}} \eta^{m+1} g(x', t)
+\end{equation}
+donde:
+\begin{itemize}
+    \item $U_0$ es la velocidad de referencia de la corriente.
+    \item $H_{\text{base}}$ es la altura del lecho base.
+    \item $m$ es el exponente del perfil de velocidades del flujo.
+    \item $g(x', t)$ es la modulación espacio-temporal en la zona de sotavento:
+    \begin{equation}
+    g(x', t) = 1.0 + A_{\text{mod}} \sin\left(\frac{2\pi t}{T_{\text{period}}}\right) S_x(x')
+    \end{equation}
+\end{itemize}
+$S_x(x')$ es un sigmoide suave que localiza la perturbación únicamente en la cara de sotavento:
+\begin{equation}
+S_x(x') = \frac{1}{2} + \frac{1}{2} \tanh\left(\frac{x' - x_{\text{crest\_offset}}}{\delta_{\text{crest}}}\right)
+\end{equation}
+con derivada espacial:
+\begin{equation}
+\frac{dS_x}{dx'} = \frac{1}{2\delta_{\text{crest}}} \text{sech}^2\left(\frac{x' - x_{\text{crest\_offset}}}{\delta_{\text{crest}}}\right)
+\end{equation}
+
+\subsection{Derivación de las Velocidades del resolvedor}
+A partir de $\psi_{\text{lab}}$ derivamos las velocidades en la formulación de la grilla sigma:
+
+\begin{enumerate}
+    \item \textbf{Velocidad Horizontal en el marco móvil (\(u\))}:
+    \begin{equation}
+    u(x', \eta, t) = \frac{1}{h(x')} \frac{\partial \psi_{\text{lab}}}{\partial \eta} - c_{\text{mig}} = U_0 \frac{H_{\text{base}}}{h(x')} (m+1) \eta^m g(x', t) - c_{\text{mig}}
+    \end{equation}
+    
+    \item \textbf{Velocidad Vertical de Coordenadas escalada (\(\omega_{\text{code}}\))}:
+    \begin{equation}
+    \omega_{\text{code}}(x', \eta, t) = c_{\text{mig}} \eta \frac{dh}{dx'} - U_0 H_{\text{base}} \eta^{m+1} \frac{\partial g(x', t)}{\partial x'}
+    \end{equation}
+    donde $\frac{\partial g(x', t)}{\partial x'} = A_{\text{mod}} \sin\left(\frac{2\pi t}{T_{\text{period}}}\right) \frac{dS_x}{dx'}$.
+\end{enumerate}
+
+El campo es estrictamente libre de divergencia en coordenadas de volumen de control:
+\begin{equation}
+\frac{\partial(h u)}{\partial x'} + \frac{\partial \omega_{\text{code}}}{\partial \eta} = 0
+\end{equation}
+
+---
+
+\section{Ecuación de Advección-Segregación}
+La evolución de la concentración de partículas finas $\phi_s(x', \eta, t)$ se gobierna por la ecuación de volumen de control:
+\begin{equation}
+\frac{\partial Q}{\partial t} = -\frac{\partial (u Q)}{\partial x'} - \frac{\partial}{\partial \eta} \left( \omega \phi_s + F_{\text{seg}} \right)
+\end{equation}
+donde:
+\begin{itemize}
+    \item $Q = h(x') \phi_s$ es la variable conservada.
+    \item $\omega = \frac{\omega_{\text{code}}}{h(x')}$ es la velocidad vertical en coordenadas sigma.
+    \item $F_{\text{seg}}$ es el flujo descendente de segregación gravitacional:
+    \begin{equation}
+    F_{\text{seg}} = -q_{\text{seg}} \phi_s (1 - \phi_s)
+    \end{equation}
+    donde $q_{\text{seg}}$ es la velocidad de segregación.
+\end{itemize}
+
+---
+
+\section{Condiciones de Borde del Sistema}
+* **Lecho Inferior ($\eta = 0$)**: Condición impermeable (flujo nulo).
+* **Superficie Libre ($\eta = 1$)**: Condición abierta con balance de masa dinámico.
+  * **Erosión en Barlovento ($\omega_{\text{code}} \ge 0$)**: Flujo saliente $F_{\eta} = \omega \phi_s(x', 1)$.
+  * **Deposición en Sotavento ($\omega_{\text{code}} < 0$)**: Flujo entrante a concentración:
+    \begin{equation}
+    \phi_{\text{inflow}}(x', t) = \text{clip}\Big(\lambda(t) \cdot P_{\text{spatial}}(x') \cdot P_{\text{temporal}}(t), \, 0.0, \, 1.0\Big)
+    \end{equation}
+    con:
+    \begin{align}
+    P_{\text{spatial}}(x') &= \max\left(0.1, \, 1.0 + \alpha_{\text{spatial}} \left(0.5 - \frac{x' - x_{\text{crest\_offset}}}{L_{\text{lee}}}\right)\right) \\
+    P_{\text{temporal}}(t) &= 1.0 + A_P \sin\left(\frac{2\pi t}{T_{\text{period}}}\right)
+    \end{align}
+    $\lambda(t)$ se calcula resolviendo el balance integral de masa superficial:
+    \begin{equation}
+    \lambda(t) = \frac{\int_{\text{stoss}} \omega_{\text{code}}(x') \phi_s(x', 1) \, dx'}{\int_{\text{lee}} |\omega_{\text{code}}(x')| P_{\text{spatial}}(x') P_{\text{temporal}}(t) \, dx'}
+    \end{equation}
+
+---
+
+\section{Parámetros de la Simulación}
+La siguiente tabla detalla los parámetros físicos y numéricos utilizados en el modelo \texttt{Cebolla.py}:
+
+\begin{table}[h!]
+\centering
+\caption{Parámetros físicos y numéricos del resolvedor}
+\vspace{0.2cm}
+\begin{tabular}{lccl}
+\toprule
+\textbf{Parámetro} & \textbf{Símbolo} & \textbf{Valor} & \textbf{Unidad / Descripción} \\
+\midrule
+Longitud de la duna & $L_{\text{dune}}$ & $0.1$ & $\text{m}$ \\
+Longitud del canal & $L_{\text{domain}}$ & $0.8$ & $\text{m}$ \\
+Altura base del lecho & $H_{\text{base}}$ & $0.001$ & $\text{m}$ \\
+Altura de la duna & $H_d$ & $0.008$ & $\text{m}$ \\
+Posición de la cresta & $x_{\text{crest\_offset}}$ & $0.08$ & $\text{m}$ (desde el inicio) \\
+Longitud de sotavento & $L_{\text{lee}}$ & $0.02$ & $\text{m}$ \\
+Velocidad de migración & $c_{\text{mig}}$ & $0.002$ & $\text{m/s}$ \\
+Velocidad de referencia & $U_0$ & $0.03$ & $\text{m/s}$ \\
+Exponente del perfil & $m$ & $3.0$ & adimensional \\
+Velocidad de segregación & $q_{\text{seg}}$ & $0.001$ & $\text{m/s}$ \\
+Concentración objetivo & $\phi_{s\_target}$ & $0.7$ & adimensional ($70\%$) \\
+Período de las capas & $T_{\text{period}}$ & $20.0$ & $\text{s}$ \\
+Amplitud modulación flujo & $A_{\text{mod}}$ & $0.4$ & adimensional \\
+Amplitud clasificación & $A_P$ & $0.55$ & adimensional \\
+Clasificación espacial & $\alpha_{\text{spatial}}$ & $0.6$ & adimensional \\
+Resolución horizontal & $N_x$ & $100$ & celdas \\
+Resolución vertical & $N_z$ & $40$ & celdas \\
+Paso de tiempo (CFL) & $dt$ & $\approx 0.002347$ & $\text{s}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+---
+
+\section{Algoritmo Numérico y Conservación}
+1. **Integración Temporal**: SSP-RK2 de estabilidad fuerte para evitar dispersión numérica.
+2. **Limitador de Flujo**: Advección horizontal mediante upwind y advección vertical centrada.
+3. **Rutina de Distribución de Excesos (\texttt{conserve\_and\_clip})**: Barre de forma bidireccional en la vertical para forzar que $\phi_s \in [0, 1]$ conservando estrictamente el volumen local de partículas de cada columna.
+4. **Corrección Global**: Corrección final multiplicativa al final del RK2 para evitar pérdida o ganancia de masa debido a errores de redondeo numérico:
+   \begin{equation}
+   Q^{n+1}_{\text{final}} = Q^{n+1} \cdot \left( \frac{M_{\text{initial}}}{M_{\text{current}}} \right)
+   \end{equation}
+
+\end{document}

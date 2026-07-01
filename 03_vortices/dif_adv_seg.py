@@ -1,32 +1,28 @@
 """
 ================================================================================
-Cebolla.py — Modelo PDE de Capas de Cebolla en Duna Bidispersa con Reciclaje
+dif_adv_seg.py — Modelo PDE de Difusión-Advección-Segregación en Duna Bidispersa
 ================================================================================
-Este script implementa un resolvedor PDE de advección-segregación en coordenadas
-sigma para una duna bidispersa que migra en el marco de laboratorio.
-
-Física del modelo (ciclo de partículas):
-  1. Las partículas en la superficie de barlovento (stoss) se transportan por la
-     capa activa hacia la cresta mediante advección horizontal.
-  2. Al pasar la cresta, las partículas se depositan en la cara de sotavento (lee)
-     formando capas sucesivas ("onion skins") con sorting espacial y temporal.
-  3. Como la duna migra hacia la derecha, las capas depositadas anteriormente
-     quedan expuestas aguas arriba y re-entran a la capa activa, cerrando el ciclo.
+Extiende el modelo de Cebolla.py añadiendo el término difusivo de remezclado
+colisional, basado en:
+  - Gajjar & Gray (2014, JFM 757): Difusión Fickiana D_r ∂²φ/∂z²
+  - Trewhela, Ancey & Gray (2021, JFM 916): D_sl ∝ γ̇·d̄², Pe = S_r/D_r
 
 Ecuación gobernante (coordenadas sigma):
-    ∂Q/∂t = -∂(uQ)/∂x - ∂/∂η(ω φ_s + F_seg)
+    ∂Q/∂t = -∂(uQ)/∂x - ∂/∂η(ω φ_s + F_seg) + ∂/∂η(D/h · ∂φ_s/∂η)
     donde Q = h·φ_s,  F_seg = -q_seg·φ_s·(1-φ_s)
 
-Campo de velocidades (libre de divergencia, con modulación temporal):
-    u(x,η,t) = U₀·H_base/h(x) · (m+1)·η^m · g(x,t) - c_mig
-    g(x,t) = 1 + A·sin(2π t/T)·S(x)    (modulación en la zona del lee)
+El nuevo término difusivo:
+    D_diff = ∂/∂η(D/h(x') · ∂φ_s/∂η)
 
-Condiciones de borde:
-    - η = 0 (base): impermeable (flujo = 0)
-    - η = 1 (superficie): abierta con balance masa erosión-deposición
-    - x: periódicas (el material reciclado pasa del lee al stoss)
+representa el remezclado colisional aleatorio que se opone a la segregación.
+El balance entre segregación y difusión se controla mediante el número de Péclet:
+    Pe = q_seg · H_d / D
 
-Basado en: Kleinhans_Sorting.py y Parametrized_modified.py del mismo proyecto.
+Condiciones de borde modificadas:
+    - η = 0 (base): flujo neto seg+diff = 0 (balance en frontera impermeable)
+    - η = 1 (superficie): abierta con erosión/deposición + gradiente cero difusivo
+
+Basado en: Cebolla.py, Kleinhans_Sorting.py y Parametrized_modified.py
 ================================================================================
 """
 
@@ -62,14 +58,26 @@ t_max = 300.0        # Max simulation time [s]
 # Flow velocity and segregation parameters
 U_0 = 0.03           # Reference flow velocity [m/s] (scaled to small dune)
 m_exponent = 3.0     # Velocity profile exponent
-# Modificado para diámetros de 1.0 mm y 0.3 mm (fuerza 16.6 veces mayor)
-q_seg = 0.0083       # Gravity-driven segregation velocity [m/s] (original: 0.0005)
+q_seg = 0.0005       # Gravity-driven segregation velocity [m/s]
+
+# =====================================================================
+# DIFFUSION PARAMETERS (NEW — Gajjar & Gray 2014, Trewhela et al. 2021)
+# =====================================================================
+# Péclet number: Pe = q_seg * H_d / D
+#   Pe >> 1 : segregation dominates → sharp concentration shocks
+#   Pe ~ O(1): diffusion and segregation compete → smooth S-shaped profiles
+#   Pe << 1 : diffusion dominates → well-mixed state
+Pe_number = 10.0                        # Segregation Péclet number
+D_coeff = q_seg * H_d / Pe_number       # Diffusion coefficient [m²/s]
+
+print(f"Diffusion coefficient D = {D_coeff:.2e} m²/s")
+print(f"Péclet number Pe = {Pe_number:.1f}")
 
 # Target average concentration
 phi_s_target = 0.9
 
 # Modulation parameters for periodic layering (creates visible onion skins)
-T_period = 20.0      # Period of layer deposition [s] #20 OG
+T_period = 20.0      # Period of layer deposition [s]
 A_mod = 0.4          # Amplitude of velocity modulation
 A_P = 0.55           # Amplitude of concentration sorting modulation (strong contrast)
 delta_crest = 0.002  # Width of smooth transition at crest [m]
@@ -109,9 +117,9 @@ dS_dx = (0.5 / delta_crest) / (np.cosh((x_cell - x_crest_offset) / delta_crest) 
 # Outputs directory
 outputs_dir = "outputs"
 os.makedirs(outputs_dir, exist_ok=True)
-video_path = os.path.join(outputs_dir, "cebolla_migracion_exp.mp4")
-image_path = os.path.join(outputs_dir, "cebolla_final_exp.png")
-fan_path = os.path.join(outputs_dir, "fan_diagram_dune_exp.png")
+video_path = os.path.join(outputs_dir, "dif_adv_seg_migracion.mp4")
+image_path = os.path.join(outputs_dir, "dif_adv_seg_final.png")
+fan_path = os.path.join(outputs_dir, "dif_adv_seg_fan.png")
 
 # =====================================================================
 # 2. INITIALIZATION WITH STRATIFIED DUNE
@@ -119,8 +127,8 @@ fan_path = os.path.join(outputs_dir, "fan_diagram_dune_exp.png")
 # Initialize with a vertically graded concentration:
 # Coarser at bottom (low phi_s ~ white), finer near surface (high phi_s ~ red),
 # with periodic modulation to seed visible onion-skin layers.
-phi_toe = 0.70       # Coarse sand at bottom (mostly white)
-phi_crest = 0.9     # Fine sand near crest (mostly red)
+phi_toe = 0.30       # Coarse sand at bottom (mostly white)
+phi_crest = 0.95     # Fine sand near crest (mostly red)
 p_seg = 1.5          # Segregation exponent for initial grading
 
 # Normalized vertical position s = (z - H_base) / H_d
@@ -195,12 +203,13 @@ def global_mass_correction(Q_in, h_2d, M_target):
 
 def compute_rhs(Q_in, t_val):
     """
-    Compute RHS of the advection-segregation PDE in sigma coordinates.
+    Compute RHS of the diffusion-advection-segregation PDE in sigma coordinates.
     
-    This implements the full cyclic particle transport:
+    This implements:
     - Horizontal advection (periodic in x, recycling material from lee to stoss)
     - Vertical advection with modulation (creates periodic deposition layers)
-    - Segregation flux (fines sink, coarse rise)
+    - Segregation flux (fines sink, coarse rise): F_seg = -q_seg·φ·(1-φ)
+    - Diffusive remixing (opposes segregation): F_diff = D/h · ∂φ/∂η
     - Open surface boundary with erosion/deposition balance
     """
     phi_in = Q_in / h_bed_2d
@@ -243,11 +252,10 @@ def compute_rhs(Q_in, t_val):
         w_eta_face[:, 1:-1] * phi_in[:, :-1],
         w_eta_face[:, 1:-1] * phi_in[:, 1:]
     )
-    # Bed boundary: impermeable (no flux)
+    # Bed boundary: impermeable (no advective flux)
     F_eta[:, 0] = 0.0
 
     # --- Surface boundary (eta = 1): open with dynamic mass conservation ---
-    # This is the key: erosion on stoss is balanced by deposition on lee
     w_surface = w_eta_face[:, -1]
     erosion_mask = w_surface >= 0    # Stoss side: material leaves the surface
     deposition_mask = w_surface < 0  # Lee side: material enters from above
@@ -255,7 +263,7 @@ def compute_rhs(Q_in, t_val):
     # Total rate of fine sediment eroded (outflow from stoss)
     total_eroded_flux = np.sum(w_surface[erosion_mask] * phi_in[erosion_mask, -1])
 
-    # Spatial sorting on lee side: coarser at bottom/toe (s = 1), finer near crest (s = 0)
+    # Spatial sorting on lee side
     s = np.clip((x_cell - x_crest_offset) / L_lee, 0.0, 1.0)
     alpha_spatial = 0.6
     P_spatial = np.maximum(0.1, 1.0 + alpha_spatial * (0.5 - s))
@@ -281,33 +289,67 @@ def compute_rhs(Q_in, t_val):
     )
 
     # --- 3. Segregation flux in vertical (eta) - downward directed ---
+    # F_seg = -q_seg · φ_above · (1 - φ_below)  [Gray & Thornton 2005]
     F_seg = np.zeros((Nx, Nz + 1))
     F_seg[:, 1:-1] = -q_seg * phi_in[:, 1:] * (1.0 - phi_in[:, :-1])
 
+    # --- 4. Diffusive remixing flux in vertical (eta) --- [NEW]
+    # F_diff = D/h(x') · ∂φ_s/∂η  (Fickian diffusion in sigma coordinates)
+    # Based on Gajjar & Gray (2014) and Trewhela et al. (2021)
+    F_diff = np.zeros((Nx, Nz + 1))
+
+    # Internal faces: central differences for ∂φ/∂η
+    # D_eff = D / h(x') is the effective diffusivity in sigma coordinates
+    D_eff = D_coeff / h_bed[:, None]  # shape (Nx, 1)
+    F_diff[:, 1:-1] = D_eff * (phi_in[:, 1:] - phi_in[:, :-1]) / deta
+
+    # Base (η = 0): no-flux condition → segregation flux balances diffusive flux
+    # F_seg|_0 + F_diff|_0 = 0  →  F_diff|_0 = -F_seg|_0 = q_seg·φ_0·(1-φ_0)
+    F_diff[:, 0] = q_seg * phi_in[:, 0] * (1.0 - phi_in[:, 0])
+
+    # Surface (η = 1): zero gradient Neumann condition for diffusion
+    # The open BC for erosion/deposition is handled separately via F_eta
+    F_diff[:, -1] = 0.0
+
     # --- Combine all vertical fluxes ---
+    # RHS_eta = -(∂F_eta/∂η + ∂F_seg/∂η) + ∂F_diff/∂η
+    # Note: diffusion has POSITIVE sign (opposes segregation gradients)
     dF_deta = ((F_eta[:, 1:] - F_eta[:, :-1]) +
-               (F_seg[:, 1:] - F_seg[:, :-1])) / deta
+               (F_seg[:, 1:] - F_seg[:, :-1]) -
+               (F_diff[:, 1:] - F_diff[:, :-1])) / deta
 
     return -dF_dx - dF_deta
 
 
 # =====================================================================
-# 4. COMPUTE CFL TIME STEP
+# 4. COMPUTE CFL TIME STEP (MODIFIED FOR DIFFUSION)
 # =====================================================================
-# Use maximum possible modulated velocities for CFL calculation
+# Advective CFL
 u_max_est = np.max(np.abs((U_0 * H_base / h_bed_2d) * (m_exponent + 1.0) * (1.0 + A_mod) - c_mig))
 w_eta_max_est = np.max(np.abs(c_mig * dh_dx)) + np.max(np.abs(U_0 * H_base * A_mod * (0.5 / delta_crest)))
-dt_cfl = 0.8 / (u_max_est / dx + (w_eta_max_est + q_seg) / (deta * np.min(h_bed)))
-dt = dt_cfl
-print(f"Time step (CFL=0.8): {dt:.6f} s")
-print(f"Initial total mass: {M_initial:.8f}")
+dt_adv = 0.8 / (u_max_est / dx + (w_eta_max_est + q_seg) / (deta * np.min(h_bed)))
+
+# Diffusive CFL: dt_diff ≤ Δη² · h_min² / (2·D)
+h_min = np.min(h_bed)
+dt_diff = 0.4 * (deta ** 2) * (h_min ** 2) / (2.0 * D_coeff)
+
+# Take the minimum of both constraints
+dt = min(dt_adv, dt_diff)
+
+print(f"\nCFL time steps:")
+print(f"  Advective:  dt_adv  = {dt_adv:.6f} s")
+print(f"  Diffusive:  dt_diff = {dt_diff:.6f} s")
+print(f"  Effective:  dt      = {dt:.6f} s")
+print(f"  Limiting constraint: {'DIFFUSION' if dt_diff < dt_adv else 'ADVECTION'}")
+print(f"\nInitial total mass: {M_initial:.8f}")
 
 # =====================================================================
 # 5. RUN SIMULATION & GENERATE VIDEO
 # =====================================================================
-print("\n" + "=" * 60)
-print("Starting Onion Model (Cebolla.py) — PDE Solver with Recycling")
-print("=" * 60)
+print("\n" + "=" * 70)
+print("Starting Diffusion-Advection-Segregation Model (dif_adv_seg.py)")
+print(f"  Pe = {Pe_number:.1f} | D = {D_coeff:.2e} m²/s | q_seg = {q_seg:.4f} m/s")
+print("=" * 70)
 
 # Setup Video Writer
 vid_width, vid_height = 1200, 280
@@ -422,10 +464,11 @@ for f_count in range(int(t_max / dt) + 10):
         ax.axhline(0, color='black', linewidth=1.0, zorder=4)
 
         # Annotations & Styling
-        ax.set_title("Modelo de Capas de Cebolla — Reciclaje Cíclico de Partículas (PDE Advección-Segregación)",
+        ax.set_title("Modelo de Difusión-Advección-Segregación — Duna Bidispersa con Remezclado Colisional",
                      fontsize=11, fontweight='bold', pad=10)
-        ax.text(0.02, 0.78, f"Tiempo: {t_current:.1f} s\nCresta x: {x_start_lab + x_crest_offset:.3f} m",
-                transform=ax.transAxes, fontsize=9, fontweight='bold',
+        ax.text(0.02, 0.72, f"Tiempo: {t_current:.1f} s\nCresta x: {x_start_lab + x_crest_offset:.3f} m\n"
+                             f"Pe = {Pe_number:.0f}  |  D = {D_coeff:.1e} m²/s",
+                transform=ax.transAxes, fontsize=8, fontweight='bold',
                 bbox=dict(facecolor='white', alpha=0.85, edgecolor='none', boxstyle='round,pad=0.2'))
 
         ax.set_xlim(x_start_lab, x_start_lab + L_dune)
@@ -453,7 +496,7 @@ plt.close(fig)
 print(f"Video saved to: {video_path}")
 
 # =====================================================================
-# 6. GENERATE 5-PANEL FAN DIAGRAM (fan_diagram_dune.png)
+# 6. GENERATE 5-PANEL FAN DIAGRAM (dif_adv_seg_fan.png)
 # =====================================================================
 print("\nGenerating 5-panel fan diagram...")
 fig_fan, axes_fan = plt.subplots(5, 1, figsize=(15, 17), sharey=True)
@@ -514,8 +557,8 @@ for idx, t_val in enumerate(target_static_times):
     ax_fan.set_xlabel("$x$ (m)", fontsize=10)
     ax_fan.tick_params(direction='in', top=True, right=True, labelsize=8)
 
-plt.suptitle("Estructura Interna — Evolución de la Concentración en Duna Bidispersa Hidráulica\n"
-             r"(Capas de Cebolla con Reciclaje Cíclico, $t_{max} = 300$ s)",
+plt.suptitle("Estructura Interna — Difusión-Advección-Segregación en Duna Bidispersa\n"
+             rf"(Pe = {Pe_number:.0f},  D = {D_coeff:.1e} m²/s,  $t_{{max}} = {t_max:.0f}$ s)",
              fontsize=12, fontweight='bold', y=0.98)
 
 # Colorbar at the bottom
@@ -529,7 +572,8 @@ plt.savefig(fan_path, dpi=300)
 plt.close(fig_fan)
 print(f"5-panel fan diagram saved to: {fan_path}")
 
-print(f"Simulation finished in {time.time() - start_wall:.1f} seconds.")
-print("=" * 60)
-print("SUCCESSFULLY COMPLETED")
-print("=" * 60)
+elapsed = time.time() - start_wall
+print(f"\nSimulation finished in {elapsed:.1f} seconds.")
+print("=" * 70)
+print(f"SUCCESSFULLY COMPLETED — Pe = {Pe_number:.1f}, D = {D_coeff:.2e} m²/s")
+print("=" * 70)
