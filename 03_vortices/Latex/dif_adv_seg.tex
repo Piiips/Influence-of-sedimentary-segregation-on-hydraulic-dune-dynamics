@@ -6,10 +6,11 @@
 \usepackage{amssymb}
 \usepackage{geometry}
 \usepackage{hyperref}
+\usepackage{booktabs}
 
-\geometry{left=2.5cm, right=2.5cm, top=3cm, bottom=3cm}
+\geometry{left=2.5cm, right=2.5cm, top=2.5cm, bottom=2.5cm}
 
-\title{\textbf{Desarrollo Matemático del Modelo de Difusión-Advección-Segregación (V2)\\ para Dunas Bidispersas}}
+\title{\textbf{Desarrollo Matemático Completo del Modelo de\\[4pt] Difusión-Advección-Segregación en Dunas Bidispersas}}
 \author{Felipe Espinoza}
 \date{\today}
 
@@ -17,78 +18,509 @@
 
 \maketitle
 
-\section{Introducción}
-El modelo original de migración de dunas bidispersas asumía una segregación simétrica ideal, en la cual las partículas finas percolan hacia el fondo del lecho de forma constante y sin mezcla. El modelo V2 expande esta base integrando las leyes empíricas de escalamiento de segregación propuestas por Gajjar \& Gray (2014) y Trewhela, Ancey \& Gray (2021). Este modelo asume que el flujo segregativo es asimétrico y depende fuertemente de la tasa de cizalle ($\dot{\gamma}$), introduciendo además un proceso de re-mezcla o difusión cinemática gobernado por las colisiones entre partículas.
+\tableofcontents
+\newpage
 
-\section{Ecuación Gobernante}
-La conservación de la fracción volumétrica de sedimentos finos $\phi$ en un dominio 2D $(x, z)$ sujeto a advección, segregación gravitacional y difusión cinemática está dada por:
-\begin{equation}
-    \frac{\partial \phi}{\partial t} + \frac{\partial (u \phi)}{\partial x} + \frac{\partial (w \phi)}{\partial z} + \frac{\partial F_{seg}}{\partial z} = \frac{\partial}{\partial z} \left( D_{sl} \frac{\partial \phi}{\partial z} \right)
-\end{equation}
-donde $u$ y $w$ son las velocidades advectivas horizontal y vertical respectivamente, $F_{seg}$ es el flujo físico vertical de segregación, y $D_{sl}$ es el coeficiente de difusión cinemática local.
+% ======================================================================
+%  PARTE I: GEOMETRÍA Y CINEMÁTICA
+% ======================================================================
 
-\section{Transformación a Coordenadas $\eta$}
-Para ajustarse a la topografía variable de la duna $h(x,t)$, se emplea la coordenada normalizada $\eta$:
-\begin{equation}
-    \eta = \frac{z - H_{base}}{h(x,t) - H_{base}}
-\end{equation}
-Asumiendo $H_{base} = 0$ para simplificar, $\eta = z/h(x,t)$. Bajo esta transformación, los flujos conservativos verticales mapean directamente. Multiplicando la ecuación gobernante por $h(x,t)$ obtenemos la formulación usada en el código para la altura de finos equivalente $Q = h \phi$:
-\begin{equation}
-    \frac{\partial Q}{\partial t} + \frac{\partial (u Q)}{\partial x} + \frac{\partial F_\eta}{\partial \eta} = 0
-\end{equation}
-donde el flujo vertical total en $\eta$ es $F_\eta = F_{adv} + F_{seg,\eta} - F_{diff,\eta}$.
+\section{El Problema Físico}
+El modelo describe la evolución temporal y espacial de la concentración volumétrica de sedimentos finos, $\phi_s(x,z,t) \in [0,1]$, en el interior de una duna hidráulica bidispersa (compuesta por dos tamaños de partículas: finas de diámetro $d_s$ y gruesas de diámetro $d_l > d_s$). La dinámica del sistema está gobernada por tres mecanismos de transporte:
+\begin{enumerate}
+    \item \textbf{Advección:} Arrastre pasivo de las partículas por el campo de velocidades del fluido $(u, w)$.
+    \item \textbf{Segregación gravitacional ($F_{seg}$):} Decantación de las partículas finas hacia el fondo del lecho activada por cizalle y gravedad.
+    \item \textbf{Difusión cinemática ($D_{sl}$):} Remezcla caótica de partículas por colisiones inter-granulares.
+\end{enumerate}
 
-\section{Perfil de Velocidades y Tasa de Cizalle ($\dot{\gamma}$)}
-La física de la segregación granular es gobernada por la fricción de corte entre capas. A partir del perfil de velocidades modulado horizontal $u$:
+Se define la relación de tamaños como:
 \begin{equation}
-    u(x, \eta, t) = \frac{U_0 H_{base}}{h(x)} (m+1) \eta^m g(x, t) - c_{mig}
-\end{equation}
-La tasa de cizalle física en profundidad ($z$) se recupera mediante la regla de la cadena $\partial_z = \frac{1}{h}\partial_\eta$:
-\begin{equation}
-    \dot{\gamma} = \left| \frac{\partial u}{\partial z} \right| = \left| \frac{1}{h} \frac{\partial u}{\partial \eta} \right| = \frac{U_0 H_{base}}{h(x)^2} m(m+1) \eta^{m-1} |g(x,t)|
-\end{equation}
-Esta dependencia en $\eta^{m-1}$ implica que tanto la segregación como la difusión serán máximas cerca de la superficie superficial ($\eta=1$) y nulas en el fondo estático de la duna ($\eta=0$).
-
-\section{Leyes de Escala de Trewhela et al. (2021)}
-Sean $d_l$ y $d_s$ los diámetros de la partícula gruesa y fina respectivamente. Definimos la razón de tamaños $R = d_l / d_s$ y el diámetro promedio ponderado local:
-\begin{equation}
-    \bar{d} = (1-\phi) d_l + \phi d_s
+    R = \frac{d_l}{d_s}
 \end{equation}
 
-\subsection{Asimetría y Flujo de Segregación}
-La función que modela la dependencia empírica asimétrica de los tamaños está dada por:
-\begin{equation}
-    \mathcal{F}(R, \phi) = (R-1) + \mathcal{E} (1-\phi) (R-1)^2
-\end{equation}
-donde $\mathcal{E} \approx 2.0957$. 
+\section{Marco de Referencia Comóvil}
+La duna migra a velocidad constante $c_{\text{mig}}$ en el marco de laboratorio. Para evitar una malla que se desplace en cada paso de tiempo, se trabaja en un \textbf{marco comóvil} donde la duna es estacionaria.
 
-La magnitud escalar de la velocidad de segregación, $f_{sl}$, decae con la presión litostática (peso del material superior). Sabiendo que $p = \rho_* g \Phi h (1-\eta)$, la formulación de Gajjar \& Gray toma la forma computacional:
+La relación entre ambos marcos es:
 \begin{equation}
-    f_{sl} = \frac{\mathcal{B} \, \dot{\gamma} \, \bar{d}^2}{\mathcal{C} \, \bar{d} + \Phi \, h (1-\eta)} \mathcal{F}(R, \phi)
+    x_{\text{lab}} = x' + c_{\text{mig}} \, t
 \end{equation}
-donde $\mathcal{B} \approx 0.3744$, $\mathcal{C} \approx 0.2712$, y $\Phi$ es la fracción de sólidos (típicamente $0.6$).
+donde $x'$ es la coordenada en el marco de la duna. Todas las velocidades del fluido se corrigen restando la velocidad de migración: $u_{\text{duna}} = u_{\text{lab}} - c_{\text{mig}}$.
 
-El flujo segregativo neto (que impulsa los finos hacia abajo) se escribe en diferencias finitas upwind como:
-\begin{equation}
-    F_{seg, \eta} = -f_{sl} \, \phi (1-\phi)
-\end{equation}
+\section{Topografía de la Duna: $h(x')$}
+La topografía del lecho se define como una función lineal por tramos en el marco de la duna. La duna tiene longitud $L_{\text{dune}}$, altura $H_d$ sobre un lecho base de altura $H_{\text{base}}$, y la cresta está ubicada en $x' = x_{\text{crest}}$. La longitud de la cara de sotavento es $L_{\text{lee}} = L_{\text{dune}} - x_{\text{crest}}$.
 
-\subsection{Flujo Difusivo}
-La agitación inducida por el cizalle genera re-mezcla proporcional a $\dot{\gamma}$ y al diámetro local al cuadrado. La difusividad escalar $D_{sl}$ es:
 \begin{equation}
-    D_{sl} = \mathcal{A} \, \dot{\gamma} \, \bar{d}^2
-\end{equation}
-donde $\mathcal{A} \approx 0.108$. 
-El flujo de difusión en coordenadas $\eta$ introduce el jacobiano $1/h$ al derivar:
-\begin{equation}
-    F_{diff, \eta} = \frac{D_{sl}}{h} \frac{\partial \phi}{\partial \eta}
+    h(x') = \begin{cases}
+        H_{\text{base}} + H_d \displaystyle\frac{x'}{x_{\text{crest}}}, & 0 \le x' \le x_{\text{crest}} \quad \text{(Barlovento)} \\[8pt]
+        H_{\text{base}} + H_d \left( 1 - \displaystyle\frac{x' - x_{\text{crest}}}{L_{\text{lee}}} \right), & x_{\text{crest}} < x' \le L_{\text{dune}} \quad \text{(Sotavento)}
+    \end{cases}
 \end{equation}
 
-\section{Restricciones Numéricas y Estabilidad}
-La introducción del término $F_{diff, \eta}$ transforma la EDO ordinaria hiperbólica del sistema en una ecuación parabólica. Para resolverla usando el método explícito (e.g. Euler o SSP-RK2), el paso temporal computacional $\Delta t$ queda gobernado de forma estricta por la condición de Courant-Friedrichs-Lewy (CFL) difusiva:
+La pendiente topográfica $\frac{dh}{dx'}$ es constante por tramos:
 \begin{equation}
-    \Delta t_{diff} \le \frac{(\Delta z_{min})^2}{2 \max(D_{sl})} = \frac{(\Delta \eta \cdot h_{min})^2}{2 \max(D_{sl})}
+    \frac{dh}{dx'} = \begin{cases}
+        +\displaystyle\frac{H_d}{x_{\text{crest}}} > 0, & \text{Barlovento (pendiente suave ascendente)} \\[8pt]
+        -\displaystyle\frac{H_d}{L_{\text{lee}}} < 0, & \text{Sotavento (pendiente pronunciada descendente)}
+    \end{cases}
 \end{equation}
-Dado que el paso de malla vertical $\Delta \eta$ se encuentra al cuadrado, la inclusión de difusión explícita impone pasos de tiempo muy inferiores ($\sim \mathcal{O}(10^{-5})$ s) a los requeridos por la advección pura.
+
+\section{Función de Corriente y Campo de Velocidades}
+Para garantizar que el campo de velocidades sea \textbf{estrictamente incompresible} ($\nabla \cdot \vec{u} = 0$), no se parametrizan $u$ y $w$ de forma independiente. En su lugar, se construye una \textbf{función de corriente} $\psi(x', z, t)$ a partir de la cual se derivan las velocidades.
+
+\subsection{Definición de la Función de Corriente}
+La función de corriente en el marco de laboratorio se define como:
+\begin{equation}
+    \psi_{\text{lab}}(x', z, t) = U_0 \, H_{\text{base}} \left( \frac{z}{h(x')} \right)^{m+1} g(x', t)
+\end{equation}
+donde:
+\begin{itemize}
+    \item $U_0$ es la velocidad de referencia de la corriente (escala del flujo).
+    \item $H_{\text{base}}$ es la altura del lecho base.
+    \item $m$ es el exponente del perfil de velocidades ($m > 0$; $m = 1$ corresponde a un perfil lineal, $m \to \infty$ a un perfil pistón).
+    \item $g(x', t)$ es una función de modulación espacio-temporal que genera capas de deposición periódicas.
+\end{itemize}
+
+\subsection{Modulación Espacio-Temporal}
+La función de modulación controla las variaciones periódicas del flujo en la zona de sotavento:
+\begin{equation}
+    g(x', t) = 1 + A_{\text{mod}} \sin\!\left(\frac{2\pi t}{T_{\text{period}}}\right) S_x(x')
+\end{equation}
+donde $A_{\text{mod}}$ es la amplitud de modulación, $T_{\text{period}}$ es el período, y $S_x(x')$ es un sigmoide suave que localiza la perturbación en la cara de sotavento:
+\begin{equation}
+    S_x(x') = \frac{1}{2} + \frac{1}{2} \tanh\!\left(\frac{x' - x_{\text{crest}}}{\delta_{\text{crest}}}\right)
+\end{equation}
+con derivada:
+\begin{equation}
+    \frac{dS_x}{dx'} = \frac{1}{2\delta_{\text{crest}}} \operatorname{sech}^2\!\left(\frac{x' - x_{\text{crest}}}{\delta_{\text{crest}}}\right)
+\end{equation}
+donde $\delta_{\text{crest}}$ es el ancho de la zona de transición suave en la cresta.
+
+\subsection{Derivación de la Velocidad Horizontal $u$}
+A partir de la definición de la función de corriente, la velocidad horizontal se obtiene como la derivada parcial respecto a $z$:
+\begin{equation}
+    u_{\text{lab}} = \frac{\partial \psi_{\text{lab}}}{\partial z}
+\end{equation}
+Derivando (5) respecto a $z$:
+\begin{equation}
+    u_{\text{lab}} = U_0 \, H_{\text{base}} \, (m+1) \frac{z^m}{h(x')^{m+1}} \, g(x', t) = U_0 \frac{H_{\text{base}}}{h(x')} (m+1) \eta^m \, g(x', t)
+\end{equation}
+donde se ha sustituido $z/h = \eta$.
+
+En el \textbf{marco comóvil} de la duna, la velocidad horizontal corregida es:
+\begin{equation}
+    \boxed{u(x', \eta, t) = U_0 \frac{H_{\text{base}}}{h(x')} (m+1) \, \eta^m \, g(x', t) \; - \; c_{\text{mig}}}
+\end{equation}
+
+\subsection{Derivación de la Velocidad Vertical $w$}
+La velocidad vertical se obtiene de la condición de incompresibilidad $\nabla \cdot \vec{u} = 0$, que equivale a:
+\begin{equation}
+    w = -\frac{\partial \psi_{\text{lab}}}{\partial x}
+\end{equation}
+Derivando (5) respecto a $x'$:
+\begin{equation}
+    w = -U_0 \, H_{\text{base}} \left[ \eta^{m+1} \frac{\partial g}{\partial x'} + g(x',t) (m+1) \eta^{m+1} \left( -\frac{1}{h} \frac{dh}{dx'} \right) \right]
+\end{equation}
+
+Simplificando:
+\begin{equation}
+    w = -U_0 \, H_{\text{base}} \, \eta^{m+1} \frac{\partial g}{\partial x'} + U_0 \frac{H_{\text{base}}}{h} (m+1) \eta^{m+1} g \frac{dh}{dx'}
+\end{equation}
+
+El segundo término se reconoce como $u_{\text{lab}} \cdot \eta \cdot \frac{dh}{dx'}$. Notar que la corrección comóvil del marco de la duna también aporta una contribución vertical:
+\begin{equation}
+    w_{\text{duna}} = w_{\text{lab}} + c_{\text{mig}} \eta \frac{dh}{dx'}
+\end{equation}
+
+\subsection{Velocidad Vertical en Coordenadas Sigma ($\omega_{\text{code}}$)}
+En coordenadas sigma, la velocidad vertical ``de malla'' es la velocidad que cruza las superficies $\eta = \text{cte}$. Para el cálculo numérico se define:
+\begin{equation}
+    \omega_{\text{code}}(x', \eta, t) = c_{\text{mig}} \, \eta \frac{dh}{dx'} - U_0 \, H_{\text{base}} \, \eta^{m+1} \frac{\partial g}{\partial x'}
+\end{equation}
+donde:
+\begin{equation}
+    \frac{\partial g}{\partial x'} = A_{\text{mod}} \sin\!\left(\frac{2\pi t}{T_{\text{period}}}\right) \frac{dS_x}{dx'}
+\end{equation}
+
+\subsection{Verificación de Incompresibilidad}
+El campo de velocidades es exactamente libre de divergencia en la formulación de volumen de control sigma:
+\begin{equation}
+    \frac{\partial (h \, u)}{\partial x'} + \frac{\partial \omega_{\text{code}}}{\partial \eta} = 0
+\end{equation}
+Esta identidad se satisface analíticamente por construcción, puesto que ambas velocidades se derivan de una misma función de corriente $\psi_{\text{lab}}$.
+
+% ======================================================================
+%  PARTE II: ECUACIÓN DE CONSERVACIÓN Y TRANSFORMACIÓN
+% ======================================================================
+
+\section{Ecuación Gobernante en Coordenadas Cartesianas}
+Para un fluido incompresible, la ley de conservación de masa de la fase fina en coordenadas cartesianas $(x, z)$ es:
+\begin{equation}
+    \frac{\partial \phi_s}{\partial t} + \frac{\partial (u \phi_s)}{\partial x} + \frac{\partial (w \phi_s)}{\partial z} + \frac{\partial F_{seg}}{\partial z} = \frac{\partial}{\partial z} \left( D_{sl} \frac{\partial \phi_s}{\partial z} \right)
+\end{equation}
+donde:
+\begin{itemize}
+    \item El segundo y tercer término representan la \textbf{advección} (transporte pasivo por el fluido).
+    \item $F_{seg} = -f_{sl} \, \phi_s(1-\phi_s)$ es el \textbf{flujo segregativo vertical} (decantación gravitacional). El factor $\phi_s(1-\phi_s)$ impide la segregación en zonas puras.
+    \item El lado derecho es la \textbf{difusión cinemática} (remezcla por colisiones).
+\end{itemize}
+
+\section{Transformación a Coordenadas Adaptadas al Contorno ($\eta$)}
+Para resolver la ecuación (19) en una topografía variable, transformamos las coordenadas cartesianas $(x, z, t)$ a coordenadas sigma $(x', \eta, t')$ que mapean el dominio a un rectángulo fijo.
+
+\subsection{Definición de la Transformación}
+Definimos el espesor total del lecho como $H(x,t) = h(x,t) - H_{\text{base}}$, y la transformación:
+\begin{align}
+    x' &= x \\
+    \eta &= \frac{z - H_{\text{base}}}{H(x,t)} \\
+    t' &= t
+\end{align}
+
+Bajo esta transformación: $\eta = 0$ corresponde a la base del lecho, $\eta = 1$ corresponde a la superficie de la duna, y el dominio físico variable se convierte en un rectángulo computacional fijo con $\eta \in [0, 1]$.
+
+\subsection{Derivación de los Operadores Diferenciales}
+Para transformar la EDP (19), expresamos las derivadas cartesianas en función de las coordenadas sigma mediante la regla de la cadena multivariable.
+
+\subsubsection{Derivada Vertical}
+\begin{equation}
+    \frac{\partial}{\partial z} = \frac{\partial x'}{\partial z}\frac{\partial}{\partial x'} + \frac{\partial \eta}{\partial z}\frac{\partial}{\partial \eta} + \frac{\partial t'}{\partial z}\frac{\partial}{\partial t'}
+\end{equation}
+
+Dado que $x'$ y $t'$ no dependen de $z$: $\frac{\partial x'}{\partial z} = 0$ y $\frac{\partial t'}{\partial z} = 0$. Para la coordenada $\eta$:
+\begin{equation}
+    \frac{\partial \eta}{\partial z} = \frac{\partial}{\partial z}\left(\frac{z - H_{\text{base}}}{H}\right) = \frac{1}{H}
+\end{equation}
+Por lo tanto:
+\begin{equation}
+    \boxed{\frac{\partial}{\partial z} = \frac{1}{H}\frac{\partial}{\partial \eta}}
+\end{equation}
+
+\subsubsection{Derivada Horizontal}
+\begin{equation}
+    \frac{\partial}{\partial x} = \frac{\partial x'}{\partial x}\frac{\partial}{\partial x'} + \frac{\partial \eta}{\partial x}\frac{\partial}{\partial \eta} + \frac{\partial t'}{\partial x}\frac{\partial}{\partial t'}
+\end{equation}
+
+Aquí $\frac{\partial x'}{\partial x} = 1$ y $\frac{\partial t'}{\partial x} = 0$. Calculamos $\frac{\partial \eta}{\partial x}$ recordando que $z$ se mantiene fijo:
+\begin{equation}
+    \frac{\partial \eta}{\partial x} = \frac{\partial}{\partial x}\left(\frac{z - H_{\text{base}}}{H}\right) = (z - H_{\text{base}})\left(-\frac{1}{H^2}\frac{\partial H}{\partial x}\right) = -\frac{\eta}{H}\frac{\partial h}{\partial x}
+\end{equation}
+(ya que $H_{\text{base}}$ es constante, $\frac{\partial H}{\partial x} = \frac{\partial h}{\partial x}$). Sustituyendo:
+\begin{equation}
+    \boxed{\frac{\partial}{\partial x} = \frac{\partial}{\partial x'} - \frac{\eta}{H}\frac{\partial h}{\partial x}\frac{\partial}{\partial \eta}}
+\end{equation}
+
+\subsubsection{Derivada Temporal}
+\begin{equation}
+    \frac{\partial}{\partial t} = \frac{\partial x'}{\partial t}\frac{\partial}{\partial x'} + \frac{\partial \eta}{\partial t}\frac{\partial}{\partial \eta} + \frac{\partial t'}{\partial t}\frac{\partial}{\partial t'}
+\end{equation}
+
+Donde $\frac{\partial x'}{\partial t} = 0$ y $\frac{\partial t'}{\partial t} = 1$. Derivamos $\eta$ respecto al tiempo con $z$ fijo:
+\begin{equation}
+    \frac{\partial \eta}{\partial t} = (z - H_{\text{base}})\left(-\frac{1}{H^2}\frac{\partial H}{\partial t}\right) = -\frac{\eta}{H}\frac{\partial h}{\partial t}
+\end{equation}
+Sustituyendo:
+\begin{equation}
+    \boxed{\frac{\partial}{\partial t} = \frac{\partial}{\partial t'} - \frac{\eta}{H}\frac{\partial h}{\partial t}\frac{\partial}{\partial \eta}}
+\end{equation}
+
+\section{Sustitución Término a Término en la Ecuación de Conservación}
+Aplicamos los operadores (25), (28) y (31) a cada término de la ecuación gobernante (19).
+
+\subsection{Término Temporal}
+\begin{equation}
+    \frac{\partial \phi_s}{\partial t} = \frac{\partial \phi_s}{\partial t'} - \frac{\eta}{H}\frac{\partial h}{\partial t}\frac{\partial \phi_s}{\partial \eta}
+\end{equation}
+
+\subsection{Término de Advección Horizontal}
+\begin{equation}
+    \frac{\partial(u\phi_s)}{\partial x} = \frac{\partial(u\phi_s)}{\partial x'} - \frac{\eta}{H}\frac{\partial h}{\partial x}\frac{\partial(u\phi_s)}{\partial \eta}
+\end{equation}
+
+\subsection{Término de Advección Vertical}
+\begin{equation}
+    \frac{\partial(w\phi_s)}{\partial z} = \frac{1}{H}\frac{\partial(w\phi_s)}{\partial \eta}
+\end{equation}
+
+\subsection{Término de Segregación}
+\begin{equation}
+    \frac{\partial F_{seg}}{\partial z} = \frac{1}{H}\frac{\partial F_{seg}}{\partial \eta}
+\end{equation}
+
+\subsection{Término de Difusión}
+Aplicando la derivada vertical dos veces:
+\begin{equation}
+    \frac{\partial}{\partial z}\left(D_{sl}\frac{\partial \phi_s}{\partial z}\right) = \frac{1}{H}\frac{\partial}{\partial \eta}\left(\frac{D_{sl}}{H}\frac{\partial \phi_s}{\partial \eta}\right)
+\end{equation}
+
+\subsection{Ecuación Completa Transformada}
+Sumando los términos (32)--(35) e igualando al término difusivo (36):
+\begin{multline}
+    \left(\frac{\partial \phi_s}{\partial t'} - \frac{\eta}{H}\frac{\partial h}{\partial t}\frac{\partial \phi_s}{\partial \eta}\right) + \left(\frac{\partial(u\phi_s)}{\partial x'} - \frac{\eta}{H}\frac{\partial h}{\partial x}\frac{\partial(u\phi_s)}{\partial \eta}\right) \\
+    + \frac{1}{H}\frac{\partial(w\phi_s)}{\partial \eta} + \frac{1}{H}\frac{\partial F_{seg}}{\partial \eta} = \frac{1}{H}\frac{\partial}{\partial \eta}\left(\frac{D_{sl}}{H}\frac{\partial \phi_s}{\partial \eta}\right)
+\end{multline}
+
+Multiplicamos toda la ecuación por $H(x,t)$ para eliminar los denominadores:
+\begin{multline}
+    H\frac{\partial \phi_s}{\partial t'} - \eta\frac{\partial h}{\partial t}\frac{\partial \phi_s}{\partial \eta} + H\frac{\partial(u\phi_s)}{\partial x'} - \eta\frac{\partial h}{\partial x}\frac{\partial(u\phi_s)}{\partial \eta} \\
+    + \frac{\partial(w\phi_s)}{\partial \eta} + \frac{\partial F_{seg}}{\partial \eta} = \frac{\partial}{\partial \eta}\left(\frac{D_{sl}}{H}\frac{\partial \phi_s}{\partial \eta}\right)
+\end{multline}
+
+% ======================================================================
+%  PARTE III: CAMBIO DE VARIABLE Q
+% ======================================================================
+
+\section{Introducción de la Variable de Masa Conservada $Q$}
+
+\subsection{Motivación Física}
+La masa total de finos en el sistema es:
+\begin{equation}
+    M_{\text{finos}} = \int_0^L \int_0^{h(x,t)} \phi_s \, dz \, dx = \int_0^L \int_0^1 \underbrace{h(x,t) \cdot \phi_s}_{Q} \, d\eta \, dx
+\end{equation}
+
+Al discretizar, cada celda computacional tiene dimensiones constantes $dx \times d\eta$. Si se resuelve directamente para $\phi_s$, la masa en cada celda es $\phi_s \cdot h(x,t) \cdot dx \cdot d\eta$, y al variar $h$ en el tiempo se generan errores de truncamiento graves. En cambio, si se define:
+\begin{equation}
+    Q(x', \eta, t') = H(x,t) \cdot \phi_s
+\end{equation}
+la masa de finos en cada celda es simplemente $Q \cdot dx \cdot d\eta$ (constante geométricamente). Al resolver para $Q$, se garantiza la conservación estricta de la masa.
+
+\subsection{Relaciones de Producto para las Derivadas}
+Como $H$ depende de $x'$ y $t'$ pero \textbf{no} de $\eta$, utilizamos la regla del producto:
+\begin{align}
+    \frac{\partial Q}{\partial t'} &= \frac{\partial(H\phi_s)}{\partial t'} = H\frac{\partial \phi_s}{\partial t'} + \phi_s\frac{\partial H}{\partial t'} \nonumber \\
+    &\implies H\frac{\partial \phi_s}{\partial t'} = \frac{\partial Q}{\partial t'} - \phi_s\frac{\partial h}{\partial t}
+\end{align}
+
+\begin{align}
+    \frac{\partial(uQ)}{\partial x'} &= \frac{\partial(Hu\phi_s)}{\partial x'} = H\frac{\partial(u\phi_s)}{\partial x'} + u\phi_s\frac{\partial H}{\partial x'} \nonumber \\
+    &\implies H\frac{\partial(u\phi_s)}{\partial x'} = \frac{\partial(uQ)}{\partial x'} - u\phi_s\frac{\partial h}{\partial x}
+\end{align}
+
+\subsection{Sustitución en la Ecuación Transformada}
+Sustituyendo (41) y (42) en la ecuación (38):
+\begin{multline}
+    \left(\frac{\partial Q}{\partial t'} - \phi_s\frac{\partial h}{\partial t}\right) - \eta\frac{\partial h}{\partial t}\frac{\partial \phi_s}{\partial \eta} + \left(\frac{\partial(uQ)}{\partial x'} - u\phi_s\frac{\partial h}{\partial x}\right) - \eta\frac{\partial h}{\partial x}\frac{\partial(u\phi_s)}{\partial \eta} \\
+    + \frac{\partial(w\phi_s)}{\partial \eta} + \frac{\partial F_{seg}}{\partial \eta} = \frac{\partial}{\partial \eta}\left(\frac{D_{sl}}{H}\frac{\partial \phi_s}{\partial \eta}\right)
+\end{multline}
+
+\section{Agrupación en Flujos Conservativos}
+Los términos que involucran derivadas de la topografía se agrupan de forma natural.
+
+\subsection{Términos Temporales de la Topografía}
+Tomamos los términos que dependen de $\frac{\partial h}{\partial t}$:
+\begin{equation}
+    -\left(\phi_s\frac{\partial h}{\partial t} + \eta\frac{\partial h}{\partial t}\frac{\partial \phi_s}{\partial \eta}\right)
+\end{equation}
+Dado que $\frac{\partial h}{\partial t}$ no depende de $\eta$, aplicamos la regla del producto inversa:
+\begin{equation}
+    \phi_s + \eta\frac{\partial \phi_s}{\partial \eta} = \frac{\partial(\eta \phi_s)}{\partial \eta}
+\end{equation}
+(verificación: $\frac{\partial(\eta \phi_s)}{\partial \eta} = \phi_s + \eta \frac{\partial \phi_s}{\partial \eta}$ \checkmark). Por lo tanto:
+\begin{equation}
+    -\frac{\partial h}{\partial t}\frac{\partial(\eta \phi_s)}{\partial \eta} = -\frac{\partial}{\partial \eta}\left(\eta \phi_s\frac{\partial h}{\partial t}\right)
+\end{equation}
+
+\subsection{Términos Espaciales de la Topografía}
+Análogamente, los términos con $\frac{\partial h}{\partial x}$:
+\begin{equation}
+    -\left(u\phi_s\frac{\partial h}{\partial x} + \eta\frac{\partial h}{\partial x}\frac{\partial(u\phi_s)}{\partial \eta}\right)
+\end{equation}
+Factorizando $\frac{\partial h}{\partial x}$ (que no depende de $\eta$):
+\begin{equation}
+    u\phi_s + \eta\frac{\partial(u\phi_s)}{\partial \eta} = \frac{\partial(\eta u \phi_s)}{\partial \eta}
+\end{equation}
+Por lo tanto:
+\begin{equation}
+    -\frac{\partial h}{\partial x}\frac{\partial(\eta u \phi_s)}{\partial \eta} = -\frac{\partial}{\partial \eta}\left(\eta u \phi_s \frac{\partial h}{\partial x}\right)
+\end{equation}
+
+\subsection{Ecuación Consolidada}
+Sustituyendo (46) y (49) en (43) y agrupando todas las derivadas $\partial/\partial\eta$ bajo un único operador:
+\begin{equation}
+    \frac{\partial Q}{\partial t'} + \frac{\partial(uQ)}{\partial x'} + \frac{\partial}{\partial \eta}\left[\underbrace{\left(w - \eta\frac{\partial h}{\partial t} - \eta u \frac{\partial h}{\partial x}\right)\phi_s}_{F_{adv}} + \underbrace{F_{seg}}_{F_{seg}} - \underbrace{\frac{D_{sl}}{H}\frac{\partial \phi_s}{\partial \eta}}_{F_{diff}}\right] = 0
+\end{equation}
+
+Esta es la \textbf{forma conservativa estricta} de la ecuación de transporte en coordenadas sigma. Garantiza la conservación global de masa de la fase fina ante cualquier deformación de la topografía.
+
+% ======================================================================
+%  PARTE IV: FLUJOS FÍSICOS — MODELO DE TREWHELA ET AL. (2021)
+% ======================================================================
+
+\section{Modelación de los Flujos Físicos: Trewhela et al.\ (2021)}
+La ecuación (50) requiere cerrar las expresiones para los flujos segregativo y difusivo. Utilizamos el modelo de Trewhela et al.\ (2021), que los parametriza en función del cizalle del flujo, la composición local y la presión litostática.
+
+\subsection{Tasa de Cizalle Local $\dot{\gamma}$}
+La tasa de cizalle del fluido se calcula derivando la velocidad horizontal respecto a la coordenada vertical:
+\begin{equation}
+    \dot{\gamma}(\eta) = \left|\frac{\partial u}{\partial z}\right| = \frac{1}{H}\left|\frac{\partial u}{\partial \eta}\right|
+\end{equation}
+A partir de la ecuación (11):
+\begin{equation}
+    \dot{\gamma}(\eta) = \frac{U_0 \, H_{\text{base}}}{h^2(x')} \, m(m+1) \, \eta^{m-1} \, g(x', t)
+\end{equation}
+
+\subsection{Diámetro Medio Local $\bar{d}$}
+El diámetro medio de la mezcla bidispersa en función de la concentración local:
+\begin{equation}
+    \bar{d}(\phi_s) = (1 - \phi_s) \, d_l + \phi_s \, d_s
+\end{equation}
+
+\subsection{Velocidad de Segregación $f_{sl}$}
+La velocidad de segregación depende del cizalle, la composición y la presión litostática:
+\begin{equation}
+    f_{sl} = \frac{B \, \dot{\gamma} \, \bar{d}^2}{C \, \bar{d} + p(\eta)} \cdot F(R, \phi_s)
+\end{equation}
+donde:
+\begin{itemize}
+    \item $B = 0.3744$ y $C = 0.2712$ son constantes empíricas.
+    \item $p(\eta) = \Phi_s \, h(x') \, (1 - \eta)$ es la presión litostática normalizada, donde $\Phi_s \approx 0.6$ es la fracción volumétrica de sólidos.
+    \item $F(R, \phi_s)$ es la función de asimetría de segregación:
+    \begin{equation}
+        F(R, \phi_s) = (R - 1) + E \, (1 - \phi_s)(R - 1)^2
+    \end{equation}
+    con $E = 2.0957$. La dependencia en $(1 - \phi_s)$ refleja que la segregación es más intensa cuando hay más espacio intergranular (más partículas gruesas).
+\end{itemize}
+
+El flujo segregativo vertical completo es:
+\begin{equation}
+    F_{seg} = -f_{sl} \, \phi_s(1 - \phi_s)
+\end{equation}
+
+\subsection{Coeficiente de Difusión $D_{sl}$}
+La difusión cinemática escala cuadráticamente con el tamaño medio y linealmente con el cizalle:
+\begin{equation}
+    D_{sl} = A \, \dot{\gamma} \, \bar{d}^2
+\end{equation}
+donde $A = 0.01$ es una constante adimensional. El flujo difusivo en la coordenada sigma es:
+\begin{equation}
+    F_{diff} = \frac{D_{sl}}{H}\frac{\partial \phi_s}{\partial \eta}
+\end{equation}
+
+\subsection{Tabla de Parámetros del Modelo de Trewhela}
+\begin{table}[h!]
+\centering
+\caption{Constantes del modelo de Trewhela et al.\ (2021)}
+\vspace{0.2cm}
+\begin{tabular}{lccl}
+\toprule
+\textbf{Parámetro} & \textbf{Símbolo} & \textbf{Valor} & \textbf{Descripción} \\
+\midrule
+Constante de difusión    & $A$ & $0.01$   & Adimensional \\
+Constante de segregación & $B$ & $0.3744$ & Adimensional \\
+Constante de presión     & $C$ & $0.2712$ & Adimensional \\
+Constante de asimetría   & $E$ & $2.0957$ & Adimensional \\
+Fracción de sólidos      & $\Phi_s$ & $0.6$ & Compactación del lecho \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ======================================================================
+%  PARTE V: ECUACIÓN FINAL DEL SOLVER
+% ======================================================================
+
+\section{Ecuación Final Implementada en el Código}
+Combinando la forma conservativa (50) con los flujos físicos del modelo de Trewhela, la ecuación que resuelve el código de simulación es:
+\begin{equation}
+    \boxed{\frac{\partial Q}{\partial t'} + \frac{\partial(uQ)}{\partial x'} + \frac{\partial F_\eta}{\partial \eta} = 0}
+\end{equation}
+donde el flujo vertical total numérico se descompone como:
+\begin{equation}
+    F_\eta = F_{adv, \eta} + F_{seg, \eta} - F_{diff, \eta}
+\end{equation}
+
+Con cada componente definida explícitamente como:
+\begin{align}
+    F_{adv,\eta} &= \left(w - \eta\frac{\partial h}{\partial t} - \eta u \frac{\partial h}{\partial x}\right)\phi_s = (H \, w_\eta) \, \phi_s \\
+    F_{seg,\eta} &= -f_{sl} \, \phi_s(1 - \phi_s) \\
+    F_{diff,\eta} &= \frac{D_{sl}}{H}\frac{\partial \phi_s}{\partial \eta}
+\end{align}
+
+La velocidad vertical en coordenadas sigma $w_\eta$ se define como:
+\begin{equation}
+    w_\eta = \frac{d\eta}{dt} = \frac{1}{H}\left(w - \eta\frac{\partial h}{\partial t} - \eta u \frac{\partial h}{\partial x}\right)
+\end{equation}
+
+% ======================================================================
+%  PARTE VII: CONDICIONES DE BORDE
+% ======================================================================
+
+\section{Condiciones de Borde del Sistema}
+
+\subsection{Base del Lecho ($\eta = 0$)}
+Condición impermeable: flujo neto nulo a través de la base.
+\begin{equation}
+    F_\eta\big|_{\eta=0} = 0
+\end{equation}
+
+\subsection{Superficie de la Duna ($\eta = 1$)}
+La superficie es una frontera abierta con balance de masa dinámico que depende del signo de la velocidad vertical:
+\begin{itemize}
+    \item \textbf{Erosión (barlovento, $\omega_{\text{code}} \ge 0$):} Las partículas salen de la superficie con la concentración local:
+    \begin{equation}
+        F_\eta\big|_{\eta=1} = w_\eta \, \phi_s(x', 1, t)
+    \end{equation}
+    \item \textbf{Deposición (sotavento, $\omega_{\text{code}} < 0$):} Las partículas entran con una concentración modulada:
+    \begin{equation}
+        \phi_{\text{inflow}}(x', t) = \text{clip}\Big(\lambda(t) \cdot P_{\text{spatial}}(x') \cdot P_{\text{temporal}}(t),\; 0,\; 1\Big)
+    \end{equation}
+\end{itemize}
+
+La función $P_{\text{spatial}}$ controla la clasificación granulométrica espacial sobre la cara de sotavento:
+\begin{equation}
+    P_{\text{spatial}}(x') = \max\!\left(0.1,\; 1 + \alpha_{\text{spatial}}\left(0.5 - \frac{x' - x_{\text{crest}}}{L_{\text{lee}}}\right)\right)
+\end{equation}
+
+La función $P_{\text{temporal}}$ controla la clasificación temporal periódica (creación de capas):
+\begin{equation}
+    P_{\text{temporal}}(t) = 1 + A_P\sin\!\left(\frac{2\pi t}{T_{\text{period}}}\right)
+\end{equation}
+
+El multiplicador de masa $\lambda(t)$ se calcula para imponer un balance global estricto entre la masa erosionada (barlovento) y la masa depositada (sotavento) en cada instante:
+\begin{equation}
+    \lambda(t) = \frac{\displaystyle\int_{\text{stoss}} \omega_{\text{code}}(x') \, \phi_s(x', 1, t) \, dx'}{\displaystyle\int_{\text{lee}} |\omega_{\text{code}}(x')| \, P_{\text{spatial}}(x') \, P_{\text{temporal}}(t) \, dx'}
+\end{equation}
+
+\subsection{Condiciones Horizontales (Periódicas)}
+El dominio es periódico en $x'$: el material que sale por la frontera derecha ($x' = L_{\text{dune}}$) reingresa por la izquierda ($x' = 0$), cerrando el ciclo de reciclaje de partículas.
+
+% ======================================================================
+%  PARTE VIII: MÉTODO NUMÉRICO
+% ======================================================================
+
+\section{Método Numérico}
+
+\subsection{Integración Temporal: SSP-RK2}
+Se utiliza un esquema Runge-Kutta de 2$^\circ$ orden de estabilidad fuerte (\emph{Strong Stability Preserving}, SSP-RK2) para evitar la dispersión numérica:
+\begin{align}
+    Q^* &= Q^n + \Delta t \, \mathcal{R}(Q^n, t^n) \\
+    Q^{n+1} &= \frac{1}{2}Q^n + \frac{1}{2}\left(Q^* + \Delta t \, \mathcal{R}(Q^*, t^n + \Delta t)\right)
+\end{align}
+donde $\mathcal{R}$ denota el lado derecho completo de la ecuación.
+
+\subsection{Advección Horizontal: Esquema Upwind}
+El flujo horizontal se evalúa en las caras de las celdas usando un esquema \emph{upwind} de primer orden:
+\begin{equation}
+    F_{x, i+1/2} = \begin{cases}
+        u_{i+1/2} \, Q_i, & \text{si } u_{i+1/2} \ge 0 \\
+        u_{i+1/2} \, Q_{i+1}, & \text{si } u_{i+1/2} < 0
+    \end{cases}
+\end{equation}
+
+\subsection{Condición CFL}
+El paso de tiempo se restringe por la condición de Courant-Friedrichs-Lewy:
+\begin{equation}
+    \Delta t \le 0.8 \left(\frac{u_{\max}}{dx} + \frac{w_{\eta,\max} + f_{sl,\max}/h_{\min}}{d\eta}\right)^{-1}
+\end{equation}
+
+Si la difusión está activada, se impone adicionalmente:
+\begin{equation}
+    \Delta t \le 0.45 \, \frac{(d\eta \cdot h_{\min})^2}{D_{sl,\max}}
+\end{equation}
+
+\subsection{Corrección de Masa Global}
+Al final de cada paso RK2, se aplica una corrección multiplicativa para eliminar errores de redondeo acumulados:
+\begin{equation}
+    Q^{n+1}_{\text{final}} = Q^{n+1} \cdot \frac{M_{\text{initial}}}{M_{\text{current}}}
+\end{equation}
+donde $M_{\text{initial}} = \sum_{i,j} Q_{i,j} \, dx \, d\eta$ es la masa total inicial del sistema.
 
 \end{document}

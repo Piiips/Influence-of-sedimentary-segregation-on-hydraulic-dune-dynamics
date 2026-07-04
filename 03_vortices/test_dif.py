@@ -1,21 +1,15 @@
 """
 ================================================================================
-dif_adv_seg_V2.py — Modelo PDE de Capas de Cebolla en Duna Bidispersa con Reciclaje
+test_dif.py — Versión optimizada de prueba para iterar parámetros
 ================================================================================
-Este script implementa un resolvedor PDE de advección-segregación-difusión en
-coordenadas sigma para una duna bidispersa que migra en el marco de laboratorio.
-
-Física del modelo (Leyes de escala Trewhela, Ancey & Gray 2021):
-  1. Magnitud de velocidad de segregación f_sl dependiente de gamma_dot, d_bar, p.
-  2. Flujo de segregación asimétrico: F(R, phi) = (R-1) + E*(1-phi)*(R-1)^2.
-  3. Difusión dependiente del cizalle: D_sl = A * gamma_dot * d_bar^2.
+Este script es una versión reducida y sin renderizado de video en vivo de 
+dif_adv_seg_V2.py. Diseñado para probar variaciones de parámetros rápidamente.
 """
 
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import scipy.ndimage as ndimage
-import cv2
 import os
 import time
 
@@ -37,8 +31,8 @@ H_d = 0.008          # Dune height [m]
 x_crest_offset = 0.08  # Crest position relative to dune start [m]
 L_lee = L_dune - x_crest_offset  # Lee face length [m]
 
-c_mig = 0.0002        # Migration speed [m/s]
-t_max = 100.0        # Max simulation time [s]
+c_mig = 0.0002       # Migration speed [m/s] (modificado a 0.0002)
+t_max = 30.0         # Max simulation time [s] (reducido para pruebas rápidas)
 
 # Flow velocity parameters
 U_0 = 0.03           # Reference flow velocity [m/s]
@@ -51,7 +45,7 @@ C_seg = 0.2712
 E_seg = 2.0957
 Phi_s = 0.6          # Solids volume fraction
 d_l = 0.0001         # Large particle diameter [m]
-d_s = 0.00005        # Small particle diameter [m]
+d_s = 0.00003        # Small particle diameter [m]
 R_size = d_l / d_s
 
 # Target average concentration
@@ -96,9 +90,7 @@ h_bed_2d = h_bed[:, None]
 # Outputs directory
 outputs_dir = "outputs"
 os.makedirs(outputs_dir, exist_ok=True)
-video_path = os.path.join(outputs_dir, "dif_adv_seg_V2_migracion.mp4")
-image_path = os.path.join(outputs_dir, "dif_adv_seg_V2_final.png")
-fan_path = os.path.join(outputs_dir, "dif_adv_seg_V2_fan.png")
+fan_path = os.path.join(outputs_dir, "test_dif_fan.png")
 
 # =====================================================================
 # 2. INITIALIZATION WITH STRATIFIED DUNE
@@ -121,7 +113,8 @@ Q = h_bed_2d * phi_s_init.copy()
 M_initial = np.sum(Q) * dx * deta
 
 # History tracking for fan diagram (5 static states)
-target_static_times = [0.0, 25.0, 50.0, 75.0, 100.0]
+# Ajustado para que calce con el nuevo t_max = 30.0
+target_static_times = [0.0, t_max*0.25, t_max*0.5, t_max*0.75, t_max]
 static_history = {0.0: phi_s_init.copy()}
 recorded_times = set([0.0])
 
@@ -237,7 +230,6 @@ def compute_rhs(Q_in, t_val):
     D_sl_face = A_diff * gamma_dot_face * (d_bar_face**2)
 
     F_seg = np.zeros((Nx, Nz + 1))
-    # Upwind for segregation: Fines fall, so w_seg is negative, upstream is j+1
     F_seg[:, 1:-1] = -f_sl_face[:, 1:-1] * phi_in[:, 1:] * (1.0 - phi_in[:, :-1])
     F_seg[:, 0] = 0.0
     F_seg[:, -1] = 0.0
@@ -273,31 +265,18 @@ print(f"Estimated Max D_sl: {D_sl_max_est:.2e} m^2/s")
 print(f"Time steps: dt_adv = {dt_adv:.6e} s, dt_diff = {dt_diff:.6e} s. Chosen dt = {dt:.6e} s")
 
 # =====================================================================
-# 5. TIME INTEGRATION & VIDEO GENERATION
+# 5. TIME INTEGRATION (SIN RENDERIZADO DE VIDEO PARA MAYOR VELOCIDAD)
 # =====================================================================
-# Colormap matching Kleinhans presentation (white for coarse, red for fines)
 cmap_phi = mcolors.LinearSegmentedColormap('WhiteRed', {
     'red':   [(0.0, 1.0, 1.0), (1.0, 0.8, 0.8)],
     'green': [(0.0, 1.0, 1.0), (1.0, 0.0, 0.0)],
     'blue':  [(0.0, 1.0, 1.0), (1.0, 0.0, 0.0)]
 })
 
-# Setup VideoWriter
-fps = 30
-vid_width, vid_height = 1200, 400
-fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-video_writer = cv2.VideoWriter(video_path, fourcc, fps, (vid_width, vid_height))
-
-# Create Matplotlib Figure for rendering
-fig, ax = plt.subplots(figsize=(12, 4), dpi=100)
-fig.patch.set_facecolor('#ffffff')
-plt.subplots_adjust(left=0.08, right=0.95, top=0.88, bottom=0.15)
-
 t_current = 0.0
 step = 0
-frame_interval = 1.0   # Render every 1 second of physical time
-next_frame_time = 0.0
 
+print("\nIniciando simulación rápida (sin video)...")
 start_wall = time.time()
 
 for f_count in range(int(t_max / dt) + 10):
@@ -331,86 +310,10 @@ for f_count in range(int(t_max / dt) + 10):
         mean_phi = np.sum(np.mean(phi_check, axis=1) * h_bed) / np.sum(h_bed)
         print(f"  Step {step:06d} | t = {t_current:7.2f} s | <φ_s> = {mean_phi:.6f}")
 
-    # --- Render frame for video ---
-    if t_current >= next_frame_time:
-        phi_t = Q / h_bed_2d
-
-        ax.clear()
-
-        # Laboratory frame coordinates: shift by c_mig * t
-        x_start_lab = c_mig * t_current
-        X_lab = X_comp + x_start_lab
-        Z_phys = Eta_comp * h_bed_2d
-
-        # Mask: only show concentration inside the dune
-        phi_t_masked = np.where(Z_phys <= h_bed_2d, phi_t, np.nan)
-
-        # 1. Background concentration field
-        ax.pcolormesh(X_lab, Z_phys, phi_t_masked, cmap=cmap_phi,
-                      vmin=0.0, vmax=1.0, shading='gouraud', zorder=1)
-
-        # 2. Concentration contour lines
-        if t_current > 2.0:
-            zoom_factor = 3
-            phi_zoom = ndimage.zoom(phi_t, zoom_factor, order=3)
-            phi_zoom = np.clip(phi_zoom, 0.0, 1.0)
-
-            x_zoom = np.linspace(0, L_dune, Nx * zoom_factor)
-            eta_zoom = np.linspace(0, 1.0, Nz * zoom_factor)
-            X_zoom, Eta_zoom = np.meshgrid(x_zoom, eta_zoom, indexing='ij')
-            h_zoom = np.interp(x_zoom, x_cell, h_bed)
-            Z_zoom = Eta_zoom * h_zoom[:, None]
-
-            X_zoom_lab = X_zoom + x_start_lab
-
-            levels_contour = np.linspace(0.1, 0.9, 12)
-            ax.contour(X_zoom_lab, Z_zoom, phi_zoom, levels=levels_contour,
-                       colors='black', linewidths=0.35, alpha=0.5, zorder=2.5)
-
-        # 3. Draw current dune profile and flat bed
-        x_profile_lab = x_cell + x_start_lab
-        ax.plot(x_profile_lab, h_bed, color='black', linewidth=2.0, zorder=4)
-
-        ax.plot([0, x_start_lab], [H_base, H_base], color='black', linewidth=1.5, zorder=4)
-        ax.plot([x_start_lab + L_dune, L_domain], [H_base, H_base], color='black', linewidth=1.5, zorder=4)
-
-        ax.axhline(0, color='black', linewidth=1.0, zorder=4)
-
-        # Annotations & Styling
-        ax.set_title(r"Modelo V2 (Trewhela et al. 2021) — Difusión-Advección-Segregación ($R=2$)",
-                     fontsize=11, fontweight='bold', pad=10)
-        ax.text(0.02, 0.78, f"Tiempo: {t_current:.1f} s\nCresta x: {x_start_lab + x_crest_offset:.3f} m\nd_l = {d_l*1e3:.1f} mm | d_s = {d_s*1e3:.2f} mm",
-                transform=ax.transAxes, fontsize=9, fontweight='bold',
-                bbox=dict(facecolor='white', alpha=0.85, edgecolor='none', boxstyle='round,pad=0.2'))
-
-        ax.set_xlim(x_start_lab, x_start_lab + L_dune)
-        ax.set_ylim(-0.001, H_base + H_d + 0.005)
-        ax.set_aspect('auto')
-        ax.set_xlabel("$x$ (m)", fontsize=10)
-        ax.set_ylabel("$z$ (m)", fontsize=10)
-        ax.tick_params(direction='in', top=True, right=True, labelsize=8)
-
-        # Render frame
-        fig.canvas.draw()
-        img = np.asarray(fig.canvas.buffer_rgba())
-        img_bgr = cv2.cvtColor(img, cv2.COLOR_RGBA2BGR)
-        img_resized = cv2.resize(img_bgr, (vid_width, vid_height))
-        video_writer.write(img_resized)
-
-        next_frame_time += frame_interval
-
-# Save final static plot
-plt.savefig(image_path, dpi=300)
-print(f"\nFinal image saved to: {image_path}")
-
-video_writer.release()
-plt.close(fig)
-print(f"Video saved to: {video_path}")
-
 # =====================================================================
-# 6. GENERATE 5-PANEL FAN DIAGRAM
+# 6. GENERATE 5-PANEL FAN DIAGRAM (RESULTADO FINAL)
 # =====================================================================
-print("\nGenerating 5-panel fan diagram...")
+print("\nGenerando diagrama final...")
 fig_fan, axes_fan = plt.subplots(5, 1, figsize=(15, 17), sharey=True)
 fig_fan.patch.set_facecolor('#ffffff')
 panels = ['a', 'b', 'c', 'd', 'e']
@@ -453,7 +356,7 @@ for idx, t_val in enumerate(target_static_times):
     
     ax_fan.text(-0.02, 1.02, f"({panels[idx]})", transform=ax_fan.transAxes,
                 fontsize=11, style='italic', weight='bold', va='bottom', ha='right')
-    ax_fan.text(0.02, 0.75, f"t = {int(t_val)} s", transform=ax_fan.transAxes,
+    ax_fan.text(0.02, 0.75, f"t = {t_val:.1f} s", transform=ax_fan.transAxes,
                 fontsize=9, fontweight='bold',
                 bbox=dict(facecolor='white', alpha=0.85, edgecolor='none', boxstyle='round,pad=0.2'))
     
@@ -464,8 +367,8 @@ for idx, t_val in enumerate(target_static_times):
         ax_fan.set_xlabel("$x$ (m)", fontsize=10)
     ax_fan.tick_params(direction='in', top=True, right=True, labelsize=8)
 
-plt.suptitle("Estructura Interna — Difusión-Advección-Segregación V2 (Trewhela et al. 2021)\n"
-             r"(Capas de Cebolla con Reciclaje Cíclico, $t_{max} = 300$ s)",
+plt.suptitle("Estructura Interna — Test de Parámetros\n"
+             f"(t_max = {t_max} s)",
              fontsize=12, fontweight='bold', y=0.98)
 
 cb_ax_fan = fig_fan.add_axes([0.30, 0.03, 0.40, 0.015])
@@ -476,9 +379,9 @@ cbar_fan.ax.tick_params(labelsize=8)
 
 plt.savefig(fan_path, dpi=300)
 plt.close(fig_fan)
-print(f"5-panel fan diagram saved to: {fan_path}")
+print(f"Imagen final guardada en: {fan_path}")
 
-print(f"Simulation finished in {time.time() - start_wall:.1f} seconds.")
+print(f"Test finalizado en {time.time() - start_wall:.1f} segundos.")
 print("=" * 60)
 print("SUCCESSFULLY COMPLETED")
 print("=" * 60)

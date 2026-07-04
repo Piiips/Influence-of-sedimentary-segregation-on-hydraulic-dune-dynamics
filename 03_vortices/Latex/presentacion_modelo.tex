@@ -1,0 +1,181 @@
+\documentclass[10pt]{beamer}
+
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+
+% Tema minimalista similar a Diffusion.pdf
+\usetheme{default}
+\useoutertheme[subsection=false]{miniframes}
+\useinnertheme{circles}
+
+% Colores limpios (blanco, negro, gris)
+\setbeamercolor{background canvas}{bg=white}
+\setbeamercolor{normal text}{fg=black}
+\setbeamercolor{title}{fg=black}
+\setbeamercolor{frametitle}{fg=black}
+\setbeamercolor{section in head/foot}{fg=gray, bg=white}
+\setbeamercolor{subsection in head/foot}{fg=lightgray, bg=white}
+\setbeamercolor{footline}{fg=gray, bg=white}
+
+% Formato del pie de página (footer)
+\setbeamertemplate{footline}{
+  \leavevmode%
+  \hbox{%
+  \begin{beamercolorbox}[wd=.333333\paperwidth,ht=2.25ex,dp=1ex,left]{footline}%
+    \hspace*{2ex}Dinámica de Dunas
+  \end{beamercolorbox}%
+  \begin{beamercolorbox}[wd=.333333\paperwidth,ht=2.25ex,dp=1ex,center]{footline}%
+    Transformación a Coordenadas Sigma
+  \end{beamercolorbox}%
+  \begin{beamercolorbox}[wd=.333333\paperwidth,ht=2.25ex,dp=1ex,right]{footline}%
+    \insertdate \hspace*{2em} Diapositiva \insertframenumber{} de \inserttotalframenumber\hspace*{2ex}
+  \end{beamercolorbox}}%
+  \vskip0pt%
+}
+
+% Sin símbolos de navegación
+\setbeamertemplate{navigation symbols}{}
+
+\title{\textbf{Desarrollo Matemático del Modelo de\\ Advección-Difusión-Segregación en Dunas Bidispersas}}
+\author{Felipe Espinoza}
+\date{\today}
+
+\begin{document}
+
+\begin{frame}
+    \titlepage
+\end{frame}
+
+\section{Introducción}
+
+\begin{frame}{El Problema Físico}
+    \textbf{Dinámica de Lechos Bidispersos:}
+    \begin{itemize}
+        \item Las dunas de arena no están compuestas por partículas idénticas; existen fracciones \textit{finas} y \textit{gruesas}.
+        \item La concentración volumétrica de finos se denota por $\phi_s(x,z,t) \in [0,1]$.
+    \end{itemize}
+    \vspace{0.5cm}
+    \textbf{Mecanismos de Transporte Dominantes:}
+    \begin{enumerate}
+        \item \textbf{Advección:} Transporte horizontal y vertical producto del arrastre del campo de velocidades del fluido $(u, w)$.
+        \item \textbf{Segregación Gravitacional ($F_{seg}$):} Decantación de partículas finas inducida por cizalle.
+        \item \textbf{Difusión ($D_{sl}$):} Remezcla caótica de partículas debida a colisiones inter-granulares.
+    \end{enumerate}
+\end{frame}
+
+\begin{frame}{Ecuación en Coordenadas Cartesianas}
+    Para un fluido incompresible ($\nabla \cdot \vec{u} = 0$), la ley de conservación de masa de la fase fina en coordenadas cartesianas ordinarias $(x,z)$ es:
+    
+    \begin{equation}
+        \frac{\partial \phi_s}{\partial t} + \frac{\partial (u \phi_s)}{\partial x} + \frac{\partial (w \phi_s)}{\partial z} + \frac{\partial F_{seg}}{\partial z} = \frac{\partial}{\partial z} \left( D_{sl} \frac{\partial \phi_s}{\partial z} \right)
+    \end{equation}
+    
+    Donde el flujo segregativo cinemático es:
+    \begin{equation*}
+        F_{seg} = -f_{sl} \phi_s (1 - \phi_s)
+    \end{equation*}
+    
+    \textbf{El Desafío Computacional:}
+    \begin{itemize}
+        \item La topografía del lecho $z = h(x,t)$ cambia en el espacio y el tiempo.
+        \item Resolver una EDP en una malla móvil compleja introduce graves errores de truncamiento e inestabilidades.
+    \end{itemize}
+\end{frame}
+
+\section{Transformación}
+
+\begin{frame}{Coordenadas Adaptadas al Contorno (Sigma)}
+    Definimos el espesor total del lecho móvil sobre el piso estático ($H_{base}$) como:
+    \begin{equation*}
+        H(x,t) = h(x,t) - H_{base}
+    \end{equation*}
+    
+    Transformamos el espacio a una coordenada normalizada $\eta$:
+    \begin{align}
+        x' &= x \\
+        \eta &= \frac{z - H_{base}}{H(x,t)} \\
+        t' &= t
+    \end{align}
+    
+    \textbf{Ventaja clave:} La duna migratoria se mapea sobre un \textit{rectángulo computacional fijo} $\eta \in [0,1]$, donde $\eta=0$ es la base y $\eta=1$ es la superficie.
+\end{frame}
+
+\begin{frame}{Operadores Diferenciales}
+    Aplicando la regla de la cadena multivariable para pasar del espacio $(x,z,t)$ al espacio $(x',\eta,t')$:
+    
+    \begin{block}{Derivada Vertical}
+        \begin{equation}
+            \frac{\partial}{\partial z} = \frac{1}{H} \frac{\partial}{\partial \eta}
+        \end{equation}
+    \end{block}
+    
+    \begin{block}{Derivadas Horizontal y Temporal}
+        \begin{align}
+            \frac{\partial}{\partial x} &= \frac{\partial}{\partial x'} - \frac{\eta}{H} \frac{\partial h}{\partial x} \frac{\partial}{\partial \eta} \\
+            \frac{\partial}{\partial t} &= \frac{\partial}{\partial t'} - \frac{\eta}{H} \frac{\partial h}{\partial t} \frac{\partial}{\partial \eta}
+        \end{align}
+    \end{block}
+\end{frame}
+
+\section{Desarrollo}
+
+\begin{frame}{Sustitución en la Ecuación Diferencial}
+    Sustituyendo los operadores en la ecuación fundamental de conservación y multiplicando por la escala vertical $H(x,t)$ para evitar denominadores:
+    
+    \begin{multline}
+        H \frac{\partial \phi_s}{\partial t'} - \eta \frac{\partial h}{\partial t} \frac{\partial \phi_s}{\partial \eta} + H \frac{\partial (u \phi_s)}{\partial x'} - \eta \frac{\partial h}{\partial x} \frac{\partial (u \phi_s)}{\partial \eta} \\
+        + \frac{\partial (w \phi_s)}{\partial \eta} + \frac{\partial F_{seg}}{\partial \eta} = \frac{\partial}{\partial \eta} \left( \frac{D_{sl}}{H} \frac{\partial \phi_s}{\partial \eta} \right)
+    \end{multline}
+\end{frame}
+
+\begin{frame}{El Problema de Conservación de Masa}
+    \textbf{Solución:} Definir el espesor equivalente de masa fina $Q = H(x,t) \cdot \phi_s$. Esto absorbe los estiramientos del lecho de la siguiente manera:
+    
+    \begin{align*}
+        H \frac{\partial \phi_s}{\partial t'} &= \frac{\partial Q}{\partial t'} - \phi_s \frac{\partial h}{\partial t} \\
+        H \frac{\partial (u \phi_s)}{\partial x'} &= \frac{\partial (u Q)}{\partial x'} - u \phi_s \frac{\partial h}{\partial x}
+    \end{align*}
+    
+    Al sustituir, los términos adicionales se agrupan:
+    \begin{equation*}
+        - \left( \phi_s \frac{\partial h}{\partial t} + \eta \frac{\partial h}{\partial t} \frac{\partial \phi_s}{\partial \eta} \right) = - \frac{\partial}{\partial \eta} \left( \eta \phi_s \frac{\partial h}{\partial t} \right)
+    \end{equation*}
+    
+    \begin{equation*}
+        - \left( u \phi_s \frac{\partial h}{\partial x} + \eta \frac{\partial h}{\partial x} \frac{\partial (u \phi_s)}{\partial \eta} \right) = - \frac{\partial}{\partial \eta} \left( \eta u \phi_s \frac{\partial h}{\partial x} \right)
+    \end{equation*}
+\end{frame}
+
+\section{Solución}
+
+\begin{frame}{Formulación Conservativa Final}
+    Recolectando todas las componentes bajo el operador diferencial vertical $\partial/\partial\eta$, obtenemos la forma conservativa estricta:
+    
+    \begin{equation}
+        \frac{\partial Q}{\partial t'} + \frac{\partial (u Q)}{\partial x'} + \frac{\partial}{\partial \eta} \left[ \left( w - \eta \frac{\partial h}{\partial t} - \eta u \frac{\partial h}{\partial x} \right) \phi_s + F_{seg} - \frac{D_{sl}}{H} \frac{\partial \phi_s}{\partial \eta} \right] = 0
+    \end{equation}
+    
+    Esta ecuación \textbf{garantiza la conservación global de masa fina}, permitiendo esquemas numéricos robustos.
+\end{frame}
+
+\begin{frame}{La Ecuación del Código de Simulación}
+    En términos prácticos para la implementación en Python, la ecuación se escribe como:
+    
+    \begin{equation}
+        \frac{\partial Q}{\partial t} + \frac{\partial (u Q)}{\partial x} + \frac{\partial F_\eta}{\partial \eta} = 0
+    \end{equation}
+    
+    Donde el flujo vertical numérico $F_\eta = F_{adv,\eta} + F_{seg,\eta} - F_{diff,\eta}$:
+    \begin{align*}
+        F_{adv, \eta} &= w_\eta Q \quad \text{donde} \quad w_\eta = \frac{1}{H}\left( w - \eta \frac{\partial h}{\partial t} - \eta u \frac{\partial h}{\partial x} \right) \\
+        F_{seg, \eta} &= -f_{sl} \phi_s (1 - \phi_s) \\
+        F_{diff, \eta} &= \frac{D_{sl}}{H} \frac{\partial \phi_s}{\partial \eta}
+    \end{align*}
+\end{frame}
+
+\end{document}

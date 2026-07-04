@@ -1,0 +1,110 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{geometry}
+\usepackage{hyperref}
+
+\geometry{left=2.5cm, right=2.5cm, top=3cm, bottom=3cm}
+
+\title{\textbf{Desarrollo Matemático y Justificación del Cambio de Variable $Q = h \phi_s$\\ en Dunas Bidispersas}}
+\author{Felipe Espinoza}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Introducción}
+En la modelación de dunas bidispersas que migran sobre un lecho, la topografía del fondo $h(x,t)$ varía en el espacio y en el tiempo. Para resolver las ecuaciones de advección-segregación-difusión de manera eficiente, se realiza una transformación a coordenadas adaptadas al contorno (coordenadas $\eta$ o tipo sigma). 
+
+En este documento se presenta de manera detallada la justificación física y la derivación matemática del cambio de variable:
+\begin{equation}
+    Q = h(x,t) \, \phi_s
+\end{equation}
+donde $\phi_s$ es la concentración volumétrica (fracción adimensional) de partículas finas y $Q$ es el espesor equivalente de finos (medido en metros).
+
+\section{Justificación Física: Conservación Global de la Masa}
+Considere un dominio bidimensional $(x,z)$ donde la base del lecho está fija en $z = H_{base} = 0$ y la superficie de la duna está dada por $z = h(x,t)$. La masa total (o volumen neto) de partículas finas $M_{\text{finos}}$ en el sistema está dada por la integral:
+\begin{equation}
+    M_{\text{finos}} = \int_{0}^{L} \int_{0}^{h(x,t)} \phi_s(x, z, t) \, dz \, dx
+\end{equation}
+
+Para resolver el problema sobre una malla rectangular computacional fija, realizamos una transformación de la coordenada vertical:
+\begin{equation}
+    \eta = \frac{z}{h(x,t)} \implies z = \eta \cdot h(x,t)
+\end{equation}
+El diferencial de volumen se transforma como $dz = h(x,t) \, d\eta$. Al sustituir esta expresión en la integral, los límites verticales cambian de $[0, h(x,t)]$ a $[0, 1]$:
+\begin{equation}
+    M_{\text{finos}} = \int_{0}^{L} \int_{0}^{1} \Big( h(x,t) \cdot \phi_s(x, \eta, t) \Big) \, d\eta \, dx
+\end{equation}
+
+Si definimos el cambio de variable $Q(x, \eta, t) = h(x,t) \cdot \phi_s(x, \eta, t)$, la masa total del sistema se reduce a:
+\begin{equation}
+    M_{\text{finos}} = \int_{0}^{L} \int_{0}^{1} Q(x, \eta, t) \, d\eta \, dx
+\end{equation}
+
+En la formulación discreta (computacional), las dimensiones de la celda de simulación $dx$ y $d\eta$ son constantes y no varían en el tiempo ni en el espacio. Por tanto, la masa de finos contenida en una celda $(i, j)$ está dada directamente por $Q_{i,j} \, dx \, d\eta$. Al resolver la ecuación gobernante directamente para $Q$ (en lugar de para $\phi_s$), se asegura una conservación estricta de la masa a nivel de máquina, evitando que se pierda o cree sedimento artificialmente debido al estiramiento o compresión geométrica de la duna.
+
+\section{Derivación Matemática de la Ecuación Gobernante}
+Partimos de la ecuación clásica de conservación de sedimentos finos en coordenadas cartesianas 2D $(x, z)$ para un flujo incompresible ($\nabla \cdot \vec{u} = 0$):
+\begin{equation}
+    \frac{\partial \phi_s}{\partial t} + \frac{\partial (u \phi_s)}{\partial x} + \frac{\partial (w \phi_s)}{\partial z} = 0
+\end{equation}
+
+Queremos mapear esta ecuación al espacio transformado $(x', \eta, t')$ definido por:
+\begin{align}
+    x' &= x \\
+    \eta &= \frac{z}{h(x,t)} \\
+    t' &= t
+\end{align}
+
+Utilizando la regla de la cadena, las derivadas parciales cartesianas se expresan en función de las coordenadas transformadas como:
+\begin{align}
+    \frac{\partial \phi_s}{\partial z} &= \frac{\partial \phi_s}{\partial \eta} \frac{\partial \eta}{\partial z} = \frac{1}{h} \frac{\partial \phi_s}{\partial \eta} \\
+    \frac{\partial \phi_s}{\partial x} &= \frac{\partial \phi_s}{\partial x'} + \frac{\partial \phi_s}{\partial \eta} \frac{\partial \eta}{\partial x} = \frac{\partial \phi_s}{\partial x'} - \frac{\eta}{h} \frac{\partial h}{\partial x} \frac{\partial \phi_s}{\partial \eta} \\
+    \frac{\partial \phi_s}{\partial t} &= \frac{\partial \phi_s}{\partial t'} + \frac{\partial \phi_s}{\partial \eta} \frac{\partial \eta}{\partial t} = \frac{\partial \phi_s}{\partial t'} - \frac{\eta}{h} \frac{\partial h}{\partial t} \frac{\partial \phi_s}{\partial \eta}
+\end{align}
+
+Sustituyendo estas derivadas en la ecuación de transporte (6):
+\begin{equation}
+    \left( \frac{\partial \phi_s}{\partial t'} - \frac{\eta}{h}\frac{\partial h}{\partial t}\frac{\partial \phi_s}{\partial \eta} \right) + \left( \frac{\partial (u \phi_s)}{\partial x'} - \frac{\eta}{h}\frac{\partial h}{\partial x}\frac{\partial (u \phi_s)}{\partial \eta} \right) + \frac{1}{h}\frac{\partial (w \phi_s)}{\partial \eta} = 0
+\end{equation}
+
+Para eliminar los denominadores y llevar la ecuación a su forma conservativa, multiplicamos la ecuación completa por $h$:
+\begin{equation}
+    h \frac{\partial \phi_s}{\partial t'} - \eta \frac{\partial h}{\partial t} \frac{\partial \phi_s}{\partial \eta} + h \frac{\partial (u \phi_s)}{\partial x'} - \eta \frac{\partial h}{\partial x} \frac{\partial (u \phi_s)}{\partial \eta} + \frac{\partial (w \phi_s)}{\partial \eta} = 0
+\end{equation}
+
+Aplicando la regla del producto para derivadas, reescribimos los primeros términos de tiempo y espacio horizontal como:
+\begin{align}
+    h \frac{\partial \phi_s}{\partial t'} &= \frac{\partial (h\phi_s)}{\partial t'} - \phi_s \frac{\partial h}{\partial t} \\
+    h \frac{\partial (u\phi_s)}{\partial x'} &= \frac{\partial (h u \phi_s)}{\partial x'} - u\phi_s \frac{\partial h}{\partial x}
+\end{align}
+
+Sustituyendo las identidades (13) y (14) en la ecuación (12) y agrupando:
+\begin{equation}
+    \frac{\partial (h\phi_s)}{\partial t'} + \frac{\partial (h u \phi_s)}{\partial x'} + \frac{\partial (w \phi_s)}{\partial \eta} - \left( \phi_s \frac{\partial h}{\partial t} + \eta \frac{\partial h}{\partial t} \frac{\partial \phi_s}{\partial \eta} \right) - \left( u \phi_s \frac{\partial h}{\partial x} + \eta \frac{\partial h}{\partial x} \frac{\partial (u \phi_s)}{\partial \eta} \right) = 0
+\end{equation}
+
+Dado que la altura de la duna $h$ y sus derivadas no dependen de la coordenada vertical de la simulación $\eta$, podemos introducirlas dentro de las derivadas parciales de $\eta$:
+\begin{align}
+    \phi_s \frac{\partial h}{\partial t} + \eta \frac{\partial h}{\partial t} \frac{\partial \phi_s}{\partial \eta} &= \frac{\partial}{\partial \eta} \left( \eta \phi_s \frac{\partial h}{\partial t} \right) \\
+    u \phi_s \frac{\partial h}{\partial x} + \eta \frac{\partial h}{\partial x} \frac{\partial (u \phi_s)}{\partial \eta} &= \frac{\partial}{\partial \eta} \left( \eta u \phi_s \frac{\partial h}{\partial x} \right)
+\end{align}
+
+Reemplazando estos dos grupos en la ecuación (15) y recolectando todas las derivadas respecto a $\eta$ bajo un solo operador:
+\begin{equation}
+    \frac{\partial (h\phi_s)}{\partial t'} + \frac{\partial (hu\phi_s)}{\partial x'} + \frac{\partial}{\partial \eta} \left[ w\phi_s - \eta \phi_s \frac{\partial h}{\partial t} - \eta u \phi_s \frac{\partial h}{\partial x} \right] = 0
+\end{equation}
+
+Finalmente, introducimos la variable $Q = h\phi_s$:
+\begin{equation}
+    \frac{\partial Q}{\partial t'} + \frac{\partial (u Q)}{\partial x'} + \frac{\partial}{\partial \eta} \left[ \left( w - \eta \frac{\partial h}{\partial t} - \eta u \frac{\partial h}{\partial x} \right) \phi_s \right] = 0
+\end{equation}
+
+Esta es la forma conservativa exacta implementada en el resolvedor de diferencias finitas en diferencias de tipo upwind. El término que acompaña a $\phi_s$ dentro de la derivada vertical representa la velocidad advectiva vertical efectiva en la malla normalizada, $h w_\eta$.
+
+\end{document}

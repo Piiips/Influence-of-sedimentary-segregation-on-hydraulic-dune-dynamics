@@ -56,14 +56,14 @@ H_d = 0.008          # Dune height [m]
 x_crest_offset = 0.08  # Crest position relative to dune start [m]
 L_lee = L_dune - x_crest_offset  # Lee face length [m]
 
-c_mig = 0.002        # Migration speed [m/s]
+c_mig = 0.002e-3        # Migration speed [m/s]
 t_max = 300.0        # Max simulation time [s]
 
 # Flow velocity and segregation parameters
 U_0 = 0.03           # Reference flow velocity [m/s] (scaled to small dune)
 m_exponent = 3.0     # Velocity profile exponent
 # Modificado para diámetros de 1.0 mm y 0.3 mm (fuerza 16.6 veces mayor)
-q_seg = 0.0083       # Gravity-driven segregation velocity [m/s] (original: 0.0005)
+q_seg = 0.0008#0.0083       # Gravity-driven segregation velocity [m/s] (original: 0.0005)
 
 # Target average concentration
 phi_s_target = 0.9
@@ -121,6 +121,7 @@ fan_path = os.path.join(outputs_dir, "fan_diagram_dune_exp.png")
 # with periodic modulation to seed visible onion-skin layers.
 phi_toe = 0.70       # Coarse sand at bottom (mostly white)
 phi_crest = 0.9     # Fine sand near crest (mostly red)
+#El promedio entre ambos debe dar la concentración del experimento
 p_seg = 1.5          # Segregation exponent for initial grading
 
 # Normalized vertical position s = (z - H_base) / H_d
