@@ -1,0 +1,44 @@
+══════════════════════════════════════════════════════════════
+  Duna bidispersa con adv.+segregación+difusión (Trewhela 21)
+══════════════════════════════════════════════════════════════
+  φ_s=0.70  φ_l=0.30  R=d_l/d_s=3.33
+  d_l=1.0mm  d_s=0.3mm
+  H=8.0mm  L=100mm  α_lee=30°  α_stoss=5.31°
+  δ_a=1.5mm  c_mig=0.300mm/min  u_a=1.60mm/min
+  Malla: Nx=80, Nz=20  |  M_inicial=3.495657e-04
+  dt_h=3.9363e-03s  dt_v=1.7930e-04s  n_sub=22
+  pasos horizontales ≈ 76213  ×22 sub-pasos verticales
+  f_sl_max=144.521mm/s  D_sl_max=1.219e-06m²/s
+  t=  11.8s  step=  3000  <φ_s>=0.699126  wall=7s
+  t=  23.6s  step=  6000  <φ_s>=0.699126  wall=14s
+  t=  35.4s  step=  9000  <φ_s>=0.699126  wall=21s
+  t=  47.2s  step= 12000  <φ_s>=0.699126  wall=28s
+  t=  59.0s  step= 15000  <φ_s>=0.699126  wall=35s
+  t=  70.9s  step= 18000  <φ_s>=0.699126  wall=43s
+  t=  82.7s  step= 21000  <φ_s>=0.699126  wall=50s
+  t=  94.5s  step= 24000  <φ_s>=0.699126  wall=57s
+  t= 106.3s  step= 27000  <φ_s>=0.699126  wall=64s
+  t= 118.1s  step= 30000  <φ_s>=0.699126  wall=72s
+  t= 129.9s  step= 33000  <φ_s>=0.699126  wall=79s
+  t= 141.7s  step= 36000  <φ_s>=0.699126  wall=86s
+  t= 153.5s  step= 39000  <φ_s>=0.699126  wall=93s
+  t= 165.3s  step= 42000  <φ_s>=0.699126  wall=100s
+  t= 177.1s  step= 45000  <φ_s>=0.699126  wall=107s
+  t= 188.9s  step= 48000  <φ_s>=0.699126  wall=114s
+  t= 200.8s  step= 51000  <φ_s>=0.699126  wall=121s
+  t= 212.6s  step= 54000  <φ_s>=0.699126  wall=128s
+  t= 224.4s  step= 57000  <φ_s>=0.699126  wall=135s
+  t= 236.2s  step= 60000  <φ_s>=0.699126  wall=142s
+  t= 248.0s  step= 63000  <φ_s>=0.699126  wall=149s
+  t= 259.8s  step= 66000  <φ_s>=0.699126  wall=156s
+  t= 271.6s  step= 69000  <φ_s>=0.699126  wall=163s
+  t= 283.4s  step= 72000  <φ_s>=0.699126  wall=170s
+  t= 295.2s  step= 75000  <φ_s>=0.699126  wall=177s
+
+  Video: /Users/felipeespinoza/Documents/Repositorios/Influence-of-sedimentary-segregation-on-hydraulic-dune-dynamics/Claude_code/outputs/duna_bidispersa_HO.mp4
+  Tiempo de cómputo: 179.5 s
+
+  Generando diagrama de abanico (5 paneles)...
+  Fan diagram: /Users/felipeespinoza/Documents/Repositorios/Influence-of-sedimentary-segregation-on-hydraulic-dune-dynamics/Claude_code/outputs/fan_diagram_HO.png
+
+══ COMPLETADO ══
