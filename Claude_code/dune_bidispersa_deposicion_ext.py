@@ -89,12 +89,38 @@ alpha_stoss = np.degrees(np.arctan(H_d / x_crest))
 # --- capa activa y migración (continuidad de Exner/Bagnold: c·H = u_a·δ_a) ---
 H_base  = 1.0e-3              # m, offset numérico del trough (escala η)
 delta_a = 1.5e-3              # m, espesor capa activa (~1-2 d_l)
-c_mig   = 5.0e-6              # m/s = 0.3 mm/min (velocidad tipica de flume)
+c_mig_fisico = 5.0e-6        # m/s = 0.3 mm/min (velocidad física real del flume)
+# FACTOR DE DEMOSTRACIÓN: la migración física real es tan lenta que la duna casi
+# no rota material en 300 s, así que la laminación del lee (que se forma por
+# avalanchas sucesivas) no alcanza a desarrollarse en tiempo de cómputo razonable.
+# Se acelera la migración ×demo_speedup SOLO para visualizar el mecanismo de
+# laminación; la FÍSICA del sorting (f_sl, D_sl, avalanchas) no cambia, solo la
+# rapidez con que la duna renueva su volumen. Poner demo_speedup=1.0 para físico.
+demo_speedup = 10.0
+c_mig   = c_mig_fisico * demo_speedup   # m/s (acelerado para la demo)
 u_a     = c_mig * H_d / delta_a  # m/s, por continuidad de Bagnold/Exner
 
 # --- perfil de velocidad horizontal (Bagnold, concentrado cerca de η=1) ---
-U_0       = 0.003              # m/s, velocidad de referencia
-m_exp     = 2.0               # exponente: mayor → capa activa más delgada
+U_0       = 0.0003              # m/s, velocidad de referencia (ADVECCIÓN horizontal, lenta)
+m_exp     = 3.0               # exponente: mayor → capa activa más delgada
+
+# --- escala de CORTE de la capa activa (DESACOPLADA de la advección) ─────────
+# ADAPTACIÓN FÍSICA (esta versión): la tasa de corte γ̇ que impulsa el kinetic
+# sieving es el corte INTERNO de la capa móvil que cizalla en la superficie,
+# fijado por la dinámica de avalancha/transporte de esa capa delgada — NO por
+# la migración neta lenta del cuerpo de la duna. En el modelo original γ̇ y la
+# advección compartían el mismo U_0, lo que acoplaba "velocidad de la duna" con
+# "intensidad de segregación": al bajar U_0 para quitar las ondas del stoss, se
+# mataba también la segregación. Aquí se separan: U_0 controla la advección
+# (lenta, sin ondas) y U_shear controla el corte de la capa activa (fuerte).
+U_shear   = 0.015            # m/s, escala de corte de la capa activa (segregación)
+
+# --- confinamiento de la capa activa (kinetic sieving solo donde hay corte) ──
+# La segregación y la difusión granular solo ocurren en la capa móvil superior
+# de espesor ~δ_a. Debajo, los granos están bloqueados (sin corte) → estructura
+# ENTERRADA congelada. Se implementa con una ventana Gaussiana en la distancia
+# física bajo la superficie (independiente de la altura local h de la duna).
+delta_active = delta_a       # m, espesor de la capa activa que cizalla (= δ_a)
 
 # --- constantes de Trewhela, Ancey & Gray (2021) Tabla 3 ---
 A_diff = 0.108
@@ -102,15 +128,26 @@ B_seg  = 0.3744
 C_seg  = 0.2712
 E_seg  = 2.0957
 nu_pack = 0.6                 # fracción de empaquetamiento sólido (típico arena)
+# piso de presión granular: regulariza f_sl en la superficie (donde p=ν·h·(1−η)→0
+# y f_sl divergía, forzando n_sub~10³–10⁴). Físicamente representa el overburden
+# mínimo (~fracción de δ_a) bajo el cual el flujo de segregación satura en vez
+# de diverger. Reduce n_sub → menos sobre-aplicación del operador vertical →
+# menos difusión numérica que lava las láminas enterradas.
+p_floor = nu_pack * 3.0 * delta_a   # m (regularización fuerte: baja n_sub ~7×)
 
 # --- modulación temporal (grain-flow periódico, Kleinhans 2004) ---
-T_period  = 20.0              # s, período entre pulsos de grain-flow
+T_period  = 10.0             # s, período entre avalanchas de grain-flow
 A_mod     = 0.4               # amplitud de modulación de velocidad
-A_P       = 0.55              # amplitud de sorting en deposición
+# A_P: amplitud de la alternancia de composición depositada por avalancha.
+# Alta (→0.9) = láminas gruesas/finas de fuerte contraste (alta variabilidad en
+# la zona de deposición, como en la foto experimental). p_sharp>1 agudiza el
+# pulso (avalanchas más "discretas": deposición concentrada, no sinusoidal).
+A_P       = 0.90             # amplitud de sorting en deposición (avalancha)
+p_sharp   = 0.5              # exponente de agudización del pulso (<1 = más cuadrado)
 delta_cr  = 2.0e-3            # m, ancho de transición cresta
 
 # --- tiempo de simulación ---
-t_max = 300.0                 # s  (igual que el modelo de referencia, corrida completa)
+t_max = 2400.0                # s  (versión EXTENDIDA: recirculación completa de gruesos)
 
 print("══════════════════════════════════════════════════════════════")
 print("  Duna bidispersa con adv.+segregación+difusión (Trewhela 21)")
@@ -123,7 +160,7 @@ print(f"  δ_a={delta_a*1e3:.1f}mm  c_mig={c_mig*1e3*60:.3f}mm/min  u_a={u_a*1e3
 # =============================================================================
 # 2. MALLA EN COORDENADAS σ (marco co-móvil con la duna)
 # =============================================================================
-Nx, Nz = 80, 20
+Nx, Nz = 160, 40            # resolución alta: preserva las láminas advectadas
 dx   = L_dune / Nx
 deta = 1.0 / Nz
 
@@ -149,27 +186,52 @@ dSx  = (0.5 / delta_cr) / np.cosh((xc - x_crest) / delta_cr)**2
 h_floor = 2.5 * delta_a
 h_eff2  = np.maximum(h2, h_floor)               # (Nx,1)
 
+# ── ventana de la capa activa: corte γ̇ solo cerca de la superficie ───────────
+# z_below = distancia física (m) bajo la superficie libre, en las caras η.
+# W_active ≈ 1 en la superficie (η=1) y decae a 0 a profundidad ~δ_a.
+# Es una función de la profundidad FÍSICA (no de η), de modo que la capa que
+# cizalla tiene siempre el mismo espesor δ_a sin importar la altura local de
+# la duna — como en la realidad. Multiplica a γ̇, confinando segregación y
+# difusión granular a esa capa; debajo, γ̇→0 → estructura enterrada congelada.
+# Ventana tipo ESCALÓN SUAVE (no Gaussiana): ≈1 en los δ_a superiores y cae
+# abruptamente a 0 debajo. Una Gaussiana con σ=δ_a aún vale ~6% a media
+# profundidad, y con f_sl fuerte eso lava las láminas enterradas sobre miles de
+# sub-pasos. El escalón tanh confina la segregación ESTRICTAMENTE a la capa
+# activa → el interior queda realmente congelado.
+w_tanh    = 0.3e-3                                # m, ancho de la transición
+z_below_f = (1.0 - Ef) * h2                      # (Nx, Nz+1) profundidad en caras
+W_active  = 0.5*(1.0 - np.tanh((z_below_f - delta_active)/w_tanh))   # (Nx, Nz+1)
+z_below_c = (1.0 - Ec) * h2                      # (Nx, Nz) profundidad en centros
+W_active_c = 0.5*(1.0 - np.tanh((z_below_c - delta_active)/w_tanh))  # (Nx, Nz)
+
+# ── velocidad de transporte de la capa activa (continuidad de Exner) ──────────
+# El TRANSPORTE horizontal también se confina a la capa activa: el interior de
+# la duna NO fluye (queda congelado en el marco co-móvil), como en la realidad.
+# Esto evita que la advección (con su difusión numérica en malla gruesa)
+# borre las láminas de foreset enterradas. La velocidad vertical w_η se
+# reconstruye por CONTINUIDAD a partir de este u confinado (ver precompute),
+# de modo que el esquema sigue conservando masa exactamente.
+# Escala: por continuidad de Exner (celeridad de bedform), q ≈ u_a·δ_a y
+# c_mig·H_d ≈ q ⇒ u_a = c_mig·H_d/δ_a (ya calculado arriba).
+U_trans   = u_a              # m/s, velocidad característica de transporte activo
+
 # sorting espacial en el lee (grueso→pie / fino→cresta, Kleinhans 2004)
 s_lee  = np.clip((xc - x_crest) / L_lee, 0, 1)
 P_spat = np.maximum(0.1, 1.0 + 0.6 * (0.5 - s_lee))  # (Nx,)
-# presión granular litostática (independiente de φ_s y t)
-p_face_st = nu_pack * h2 * (1 - Ef)             # (Nx, Nz+1)
+# presión granular litostática (independiente de φ_s y t) + piso de regularización
+p_face_st = nu_pack * h2 * (1 - Ef) + p_floor   # (Nx, Nz+1)
 
 out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "outputs")
 os.makedirs(out_dir, exist_ok=True)
 
 # =============================================================================
-# 3. CONDICIÓN INICIAL  (gradación normal, φ_s↑ con altura, masa=0.70 exacto)
+# 3. CONDICIÓN INICIAL  (masa HOMOGÉNEA: φ_s = 0.70 en todo el dominio)
 # =============================================================================
-s_init  = np.clip((Ec * h2 - H_base) / H_d, 0, 1)
-phi_ic  = 0.50 + 0.45 * s_init**1.5            # finos arriba (fining-upward)
-# semilla de capas
-t_d = (Xc - x_crest - L_lee * (1 - s_init)) / max(c_mig, 1e-15)
-phi_ic += 0.06 * np.sin(2*np.pi * np.floor(t_d / (T_period/4)) / 4)
-phi_ic  = np.clip(phi_ic, 0.02, 0.98)
-# normalizar a φ_s = 0.70 exacto
-phi_ic += phi_s_target - np.sum(np.mean(phi_ic, axis=1)*h) / np.sum(h)
-phi_ic  = np.clip(phi_ic, 0.02, 0.98)
+# Duna inicialmente homogénea (mezcla perfecta): φ_s = 0.70 constante en todo el
+# dominio, sin gradación, sin foresets sembrados ni armor. Toda la estructura
+# (armor de gruesos en la superficie, láminas de foreset en el lee) debe EMERGER
+# dinámicamente de la segregación confinada + deposición por avalanchas.
+phi_ic  = np.full((Nx, Nz), phi_s_target)      # φ_s = 0.70 uniforme
 
 Q = h2 * phi_ic.copy()
 M0 = np.sum(Q) * dx * deta                      # masa conservada
@@ -219,13 +281,21 @@ def precompute(t_val):
     """
     g_t    = 1.0 + A_mod * np.sin(2*np.pi*t_val/T_period) * Sx
     dg_t   = A_mod * np.sin(2*np.pi*t_val/T_period) * dSx
-    # velocidad vertical libre de divergencia en las caras η
+    # velocidad vertical libre de divergencia en las caras η (consistente con el
+    # perfil u de rhs_horiz; el término c_mig·η·dh da erosión-stoss/deposición-lee)
     w_f = (c_mig * eta_f[None,:] * dh[:,None]
            - U_0 * H_base * eta_f[None,:]**(m_exp+1) * dg_t[:,None])
     # tasa de corte |∂u/∂η| / h  (con piso h_floor en h_eff2)
-    gd = np.abs((U_0*H_base/h_eff2**2) * m_exp*(m_exp+1)
-                * Ef**(m_exp-1) * g_t[:,None])
-    Pt = 1.0 + A_P * np.sin(2*np.pi*t_val/T_period)
+    # CAMBIO 1: usa U_shear (corte de la capa activa) en vez de U_0 (advección),
+    #           desacoplando segregación de la velocidad de migración.
+    # CAMBIO 2: multiplica por W_active para confinar el corte a la capa activa
+    #           (δ_a bajo la superficie); debajo γ̇→0 → sin segregación/difusión.
+    gd = np.abs((U_shear*H_base/h_eff2**2) * m_exp*(m_exp+1)
+                * Ef**(m_exp-1) * g_t[:,None]) * W_active
+    # avalancha discreta: pulso agudizado (más "cuadrado") en vez de seno suave,
+    # para depositar láminas de composición fuertemente alternada (grueso/fino).
+    raw = np.sin(2*np.pi*t_val/T_period)
+    Pt  = 1.0 + A_P * np.sign(raw) * np.abs(raw)**p_sharp
     return w_f, gd, Pt
 
 
@@ -236,6 +306,47 @@ def minmod(a, b):
     Kokelaar, ec. hiperbólica no lineal)."""
     s = np.sign(a)
     return np.where(a*b <= 0, 0.0, s*np.minimum(np.abs(a), np.abs(b)))
+
+
+def weno5_faces_x(v):
+    """
+    Reconstrucción WENO5 (5º orden, periódica en x=axis0) de v en las caras.
+    Devuelve (v_plus, v_minus):
+      v_plus[i]  = valor reconstruido en la cara DERECHA de la celda i (i+½),
+                   sesgado desde la izquierda  → estado φ_L en la cara i+½.
+      v_minus[i] = valor reconstruido en la cara IZQUIERDA de la celda i (i−½),
+                   sesgado desde la derecha    → estado φ_R en la cara i−½.
+
+    WENO5 elige de forma no-lineal (indicadores de suavidez β) entre 3 stencils
+    de 3 celdas: en zonas suaves recupera 5º orden (difusión numérica ~Δx⁵,
+    ínfima → preserva las láminas finas), y cerca de un frente pronunciado se
+    reduce a un stencil ENO no oscilatorio. Reemplaza al MUSCL de 2º orden
+    (difusión ~Δx³) que estaba lavando los foresets advectados.
+    Ref.: Jiang & Shu (1996), J. Comput. Phys. 126, 202.
+    """
+    eps = 1e-6
+    vm2 = np.roll(v, 2, axis=0); vm1 = np.roll(v, 1, axis=0)
+    vp1 = np.roll(v, -1, axis=0); vp2 = np.roll(v, -2, axis=0)
+
+    # ── v_plus en i+½ (sesgo izquierdo) ──────────────────────────────────
+    b0 = 13/12*(vm2-2*vm1+v)**2 + 0.25*(vm2-4*vm1+3*v)**2
+    b1 = 13/12*(vm1-2*v+vp1)**2 + 0.25*(vm1-vp1)**2
+    b2 = 13/12*(v-2*vp1+vp2)**2 + 0.25*(3*v-4*vp1+vp2)**2
+    a0 = 0.1/(eps+b0)**2; a1 = 0.6/(eps+b1)**2; a2 = 0.3/(eps+b2)**2
+    s  = a0+a1+a2
+    p0 = (2*vm2-7*vm1+11*v)/6; p1 = (-vm1+5*v+2*vp1)/6; p2 = (2*v+5*vp1-vp2)/6
+    v_plus = (a0*p0+a1*p1+a2*p2)/s
+
+    # ── v_minus en i−½ (sesgo derecho, espejo) ───────────────────────────
+    b0 = 13/12*(vp2-2*vp1+v)**2 + 0.25*(vp2-4*vp1+3*v)**2
+    b1 = 13/12*(vp1-2*v+vm1)**2 + 0.25*(vp1-vm1)**2
+    b2 = 13/12*(v-2*vm1+vm2)**2 + 0.25*(3*v-4*vm1+vm2)**2
+    a0 = 0.1/(eps+b0)**2; a1 = 0.6/(eps+b1)**2; a2 = 0.3/(eps+b2)**2
+    s  = a0+a1+a2
+    p0 = (2*vp2-7*vp1+11*v)/6; p1 = (-vp1+5*v+2*vm1)/6; p2 = (2*v+5*vm1-vm2)/6
+    v_minus = (a0*p0+a1*p1+a2*p2)/s
+
+    return np.clip(v_plus, 0.0, 1.0), np.clip(v_minus, 0.0, 1.0)
 
 
 def rhs_horiz(Q_in, t_val):
@@ -255,17 +366,19 @@ def rhs_horiz(Q_in, t_val):
     """
     phi = Q_in / h2
     g_t = 1.0 + A_mod * np.sin(2*np.pi*t_val/T_period) * Sx
+    # perfil de velocidad: transporte activo (η^m, cerca de superficie) − c_mig.
+    # El −c_mig es la recirculación en el marco co-móvil (imprescindible para el
+    # patrón erosión-stoss / deposición-lee). El interior advecta a ≈−c_mig; con
+    # c_mig de demo y f_sl regularizado (n_sub moderado) el lavado numérico de
+    # las láminas enterradas es pequeño.
     u   = (U_0*H_base/h2) * (m_exp+1) * Ec**m_exp * g_t[:,None] - c_mig
     uf  = 0.5 * (u + np.roll(u, 1, axis=0))          # velocidad en cara x_{i-1/2}
 
-    # pendientes limitadas por celda (periódico en x)
-    phi_m1 = np.roll(phi, 1, axis=0)                 # φ_{i-1}
-    phi_p1 = np.roll(phi, -1, axis=0)                # φ_{i+1}
-    slope  = minmod(phi - phi_m1, phi_p1 - phi)      # σ_i
-
-    # estados reconstruidos en la cara x_{i-1/2}
-    phi_R = phi - 0.5*slope                          # extrapolado desde la celda i (lado derecho de la cara i-1/2)
-    phi_L = np.roll(phi + 0.5*slope, 1, axis=0)       # extrapolado desde la celda i-1 (lado izquierdo)
+    # reconstrucción WENO5 (5º orden) en las caras — mucho menos difusiva que
+    # el MUSCL de 2º orden, preserva las láminas de foreset advectadas.
+    phi_plus, phi_minus = weno5_faces_x(phi)
+    phi_L = np.roll(phi_plus, 1, axis=0)   # cara derecha de la celda i-1 → lado izq. de i-1/2
+    phi_R = phi_minus                      # cara izquierda de la celda i   → lado der. de i-1/2
 
     # flujo en la cara, usando h de la celda donante (consistente con Q=h·phi)
     Fx = np.where(uf >= 0, uf * phi_L * np.roll(h2,1,axis=0), uf * phi_R * h2)
@@ -353,12 +466,12 @@ def rhs_vert(Q_in, w_f, gd, Pt):
 # 5. PASO DE TIEMPO — operator splitting horizontal / vertical
 # =============================================================================
 u_max  = np.max(np.abs((U_0*H_base/h2)*(m_exp+1)*(1+A_mod) - c_mig))
-dt_h   = 0.5 * dx / u_max                       # paso grande (horizontal)
+dt_h   = 0.5 * dx / max(u_max, 1e-15)           # paso grande (horizontal)
 
 # estimación realista de f_sl y D_sl con el campo inicial
 _pf0         = np.empty((Nx, Nz+1))
 _pf0[:,1:-1] = 0.5*(phi_ic[:,1:]+phi_ic[:,:-1]);  _pf0[:,0]=phi_ic[:,0]; _pf0[:,-1]=phi_ic[:,-1]
-_gd0  = np.abs((U_0*H_base/h_eff2**2)*m_exp*(m_exp+1)*Ef**(m_exp-1)*(1+A_mod))
+_gd0  = np.abs((U_shear*H_base/h_eff2**2)*m_exp*(m_exp+1)*Ef**(m_exp-1)*(1+A_mod)) * W_active
 _db0  = (1-_pf0)*d_l + _pf0*d_s
 _ff0  = (B_seg*_gd0*_db0**2) / (C_seg*_db0 + p_face_st) * ((R-1)+E_seg*(1-_pf0)*(R-1)**2)
 _Dsl0 = A_diff * _gd0 * _db0**2
@@ -380,7 +493,7 @@ print(f"  f_sl_max={f_sl_max*1e3:.3f}mm/s  D_sl_max={D_sl_max:.3e}m²/s")
 # =============================================================================
 # 6. SIMULACIÓN + VIDEO + SNAPSHOTS
 # =============================================================================
-target_t   = [0.0, 60.0, 120.0, 180.0, 300.0]   # mismos tiempos que dune_bidispersa_final.py, para comparación directa
+target_t   = [0.0, 600.0, 1200.0, 1800.0, 2400.0]   # snapshots repartidos en la corrida de 2400 s
 snapshots  = {0.0: phi_ic.copy()}
 recorded   = {0.0}
 
@@ -391,7 +504,7 @@ cmap_phi = mcolors.LinearSegmentedColormap.from_list(
 # ── video ─────────────────────────────────────────────────────────────────────
 vid_w, vid_h_px = 1280, 380
 fps_vid = 20
-vp  = os.path.join(out_dir, "duna_bidispersa_HO.mp4")
+vp  = os.path.join(out_dir, "duna_bidispersa_deposicion_ext.mp4")
 vw  = cv2.VideoWriter(vp, cv2.VideoWriter_fourcc(*'mp4v'), fps_vid, (vid_w, vid_h_px))
 
 fig_v, ax_v = plt.subplots(figsize=(12.8, 3.8), dpi=100)
@@ -406,7 +519,7 @@ cb.set_ticks([0, 0.25, 0.5, 0.75, 1.0])
 
 t_cur, step = 0.0, 0
 next_frame  = 0.0
-dt_frame    = 1.0        # un frame cada 1 s de tiempo físico
+dt_frame    = 4.0        # un frame cada 4 s físicos (2400s -> 600 frames, video ~30s)
 t0_wall     = time.time()
 
 while t_cur < t_max:
@@ -473,8 +586,9 @@ while t_cur < t_max:
         ax_v.fill_between(x_lab, 0, h, color='none', zorder=0)
 
         ax_v.set_xlim(x_lab[0], x_lab[-1])
+        ax_v.invert_xaxis()   # ← VISTA ESPEJADA: lee a la izquierda, flujo →izquierda
         ax_v.set_ylim(-0.5e-3, H_base + H_d + 3e-3)
-        ax_v.set_xlabel("$x$ (m) — posición en el laboratorio", fontsize=10)
+        ax_v.set_xlabel("$x$ (m) — posición en el laboratorio (eje espejado: flujo →izquierda)", fontsize=10)
         ax_v.set_ylabel("$z$ (m)", fontsize=10)
         ax_v.tick_params(direction='in', top=True, right=True, labelsize=8)
 
@@ -498,7 +612,7 @@ while t_cur < t_max:
         next_frame += dt_frame
 
 # guardar imagen final
-fig_v.savefig(os.path.join(out_dir, "duna_bidispersa_HO.png"), dpi=300)
+fig_v.savefig(os.path.join(out_dir, "duna_bidispersa_deposicion_ext.png"), dpi=300)
 vw.release();  plt.close(fig_v)
 print(f"\n  Video: {vp}")
 print(f"  Tiempo de cómputo: {time.time()-t0_wall:.1f} s")
@@ -510,7 +624,7 @@ print("\n  Generando diagrama de abanico (5 paneles)...")
 
 # guardar snapshots crudos (.npz) para poder rehacer la figura comparativa
 # upwind-vs-MUSCL sin tener que re-correr el solver completo
-np.savez(os.path.join(out_dir, "snapshots_HO.npz"),
+np.savez(os.path.join(out_dir, "snapshots_deposicion_ext.npz"),
          target_t=np.array(target_t),
          snapshots=np.stack([snapshots[tt] for tt in target_t]),
          xc=xc, h=h, c_mig=c_mig, x_crest=x_crest,
@@ -550,11 +664,12 @@ for idx, tt in enumerate(target_t):
             fontsize=9, fontweight='bold',
             bbox=dict(fc='white', alpha=0.8, ec='none', boxstyle='round,pad=0.2'))
     ax.set_xlim(xl[0], xl[-1])
+    ax.invert_xaxis()   # ← VISTA ESPEJADA: lee a la izquierda, flujo →izquierda
     ax.set_ylim(-0.3e-3, H_base + H_d + 3e-3)
     ax.set_ylabel("$z$ (m)", fontsize=9)
     ax.tick_params(direction='in', top=True, right=True, labelsize=8)
     if idx == 4:
-        ax.set_xlabel("$x$ (m) — posición en el laboratorio", fontsize=10)
+        ax.set_xlabel("$x$ (m) — posición en el laboratorio (eje espejado: flujo →izquierda)", fontsize=10)
 
 fig_f.suptitle(
     "Estructura interna de la duna bidispersa  ($\\phi_s$=0.70, $d_l$=1.0 mm, $d_s$=0.3 mm)\n"
@@ -567,7 +682,7 @@ cbar2  = fig_f.colorbar(im, cax=cb_ax2, orientation='horizontal')
 cbar2.set_label(r"$\phi_s$ — fracción de finos  (blanco=grueso, rojo=fino)", fontsize=9)
 cbar2.set_ticks([0, 0.25, 0.5, 0.75, 1.0])
 
-fp = os.path.join(out_dir, "fan_diagram_HO.png")
+fp = os.path.join(out_dir, "fan_diagram_deposicion_ext.png")
 fig_f.savefig(fp, dpi=300);  plt.close(fig_f)
 print(f"  Fan diagram: {fp}")
 print("\n══ COMPLETADO ══")

@@ -1,0 +1,23 @@
+══════════════════════════════════════════════════════════════
+  Duna bidispersa con adv.+segregación+difusión (Trewhela 21)
+══════════════════════════════════════════════════════════════
+  φ_s=0.70  φ_l=0.30  R=d_l/d_s=3.33
+  d_l=1.0mm  d_s=0.3mm
+  H=8.0mm  L=100mm  α_lee=30°  α_stoss=5.31°
+  δ_a=1.5mm  c_mig=3.000mm/min  u_a=16.00mm/min
+  Malla: Nx=160, Nz=40  |  M_inicial=3.500027e-04
+  dt_h=1.9746e-01s  dt_v=6.2238e-04s  n_sub=318
+  pasos horizontales ≈ 12154  ×318 sub-pasos verticales
+  f_sl_max=3.346mm/s  D_sl_max=4.785e-07m²/s
+  t= 592.4s  step=  3000  <φ_s>=0.700000  wall=174s
+  t=1184.7s  step=  6000  <φ_s>=0.700000  wall=344s
+  t=1777.1s  step=  9000  <φ_s>=0.700000  wall=513s
+  t=2369.5s  step= 12000  <φ_s>=0.700000  wall=687s
+
+  Video: /Users/felipeespinoza/Documents/Repositorios/Influence-of-sedimentary-segregation-on-hydraulic-dune-dynamics/Claude_code/outputs/duna_bidispersa_deposicion_ext.mp4
+  Tiempo de cómputo: 696.1 s
+
+  Generando diagrama de abanico (5 paneles)...
+  Fan diagram: /Users/felipeespinoza/Documents/Repositorios/Influence-of-sedimentary-segregation-on-hydraulic-dune-dynamics/Claude_code/outputs/fan_diagram_deposicion_ext.png
+
+══ COMPLETADO ══

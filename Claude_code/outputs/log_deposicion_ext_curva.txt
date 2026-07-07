@@ -1,0 +1,21 @@
+══════════════════════════════════════════════════════════════
+  Duna bidispersa con adv.+segregación+difusión (Trewhela 21)
+══════════════════════════════════════════════════════════════
+  φ_s=0.70  φ_l=0.30  R=d_l/d_s=3.33
+  d_l=1.0mm  d_s=0.3mm
+  H=8.0mm  L=100mm  α_lee=30°  α_stoss=5.31°
+  δ_a=1.5mm  c_mig=3.000mm/min  u_a=16.00mm/min
+  [geometría curva/stoss cóncavo] p_stoss=0.55  pendiente máx lee: 28.69° (cota α_lee=30°)
+  Malla: Nx=160, Nz=40  |  M_inicial=4.365557e-04
+  dt_h=4.8448e-01s  dt_v=3.4342e-03s  n_sub=142
+  pasos horizontales ≈ 4953  ×142 sub-pasos verticales
+  f_sl_max=3.322mm/s  D_sl_max=4.785e-07m²/s
+  t=1453.4s  step=  3000  <φ_s>=0.700000  wall=92s
+
+  Video: /Users/felipeespinoza/Documents/Repositorios/Influence-of-sedimentary-segregation-on-hydraulic-dune-dynamics/Claude_code/outputs/duna_bidispersa_deposicion_ext_curva.mp4
+  Tiempo de cómputo: 151.4 s
+
+  Generando diagrama de abanico (5 paneles)...
+  Fan diagram: /Users/felipeespinoza/Documents/Repositorios/Influence-of-sedimentary-segregation-on-hydraulic-dune-dynamics/Claude_code/outputs/fan_diagram_deposicion_ext_curva.png
+
+══ COMPLETADO ══

@@ -105,6 +105,53 @@ de dh/dx introduce en w_eta ahí. En la versión curva esa protuberancia
 desaparece: el interfaz sigue el contorno redondeado de la cresta de
 forma suave, sin el quiebre local.
 
+## 5. Modelo de deposición/laminación del lee (`dune_bidispersa_deposicion.py`)
+
+Iteración enfocada en reproducir tres observaciones de la foto experimental
+(`Documents/Frame_lat_modificado_0729.tiff`): (1) armor de gruesos como banda
+paralela a la superficie del stoss —no "ondas"—, (2) láminas foreset alternadas
+grueso/fino en el lee, y (3) alta variabilidad de concentración en la zona de
+deposición marcada.
+
+**Diagnóstico raíz de las "ondas":** en el modelo original la tasa de corte γ̇
+(que impulsa segregación y difusión) era ≠0 en TODA la profundidad, así que el
+armor se organizaba como blobs advectados por todo el espesor en vez de una
+banda superficial limpia.
+
+**Cambios (todos documentados en el código):**
+1. **Confinamiento de la capa activa**: γ̇ (y por tanto f_sl, D_sl) se restringe
+   a los δ_a superiores con una ventana escalón (tanh). Debajo, los granos están
+   bloqueados → estructura enterrada congelada. → armor limpio y paralelo.
+2. **Desacople del corte y la advección**: `U_shear` (segregación) separado de
+   `U_0` (advección lenta), para tener segregación fuerte sin las ondas.
+3. **CI homogénea**: la duna arranca como mezcla perfecta φ_s=0.70 uniforme en
+   todo el dominio (sin gradación, sin foresets sembrados, sin armor inicial).
+   Toda la estructura (armor superficial, acumulación de gruesos en el pie del
+   lee) EMERGE dinámicamente de la segregación confinada + deposición.
+   [Versión previa sembraba foresets heredados; se removió a pedido del usuario.]
+4. **Avalanchas discretas**: pulso de deposición agudizado + alto contraste
+   (A_P=0.9) → láminas alternadas grueso/fino con alta varianza.
+5. **Piso de presión** en f_sl (regulariza la singularidad p→0 en la superficie):
+   f_sl_max pasó de ~390 a ~18 mm/s (físico) y n_sub de ~6000 a ~890.
+6. **WENO5** (5º orden) para la advección horizontal en vez de MUSCL (2º orden):
+   preserva las láminas advectadas con mucha menos difusión numérica, al mismo
+   costo. Fue el cambio decisivo para que las láminas no se "laven".
+7. **Migración de demo** `demo_speedup=10` (c_mig ×10): SOLO para visualizar el
+   turnover/laminación en tiempo de cómputo razonable. La física no cambia;
+   poner `demo_speedup=1.0` para la velocidad física real.
+
+**Hallazgo numérico clave:** el "lavado" de las láminas NO es físico sino
+difusión numérica de la advección sobre malla gruesa (un diagnóstico apagando
+segregación confirmó que la advección horizontal sola ya las lavaba). Se atacó
+con WENO5 + mayor resolución (Nx 80→160, Nz 20→40), no con cambios físicos.
+
+Corrida completa (t_max=300s): masa exacta `<φ_s>=0.700000`, 244 s de cómputo.
+Ver `outputs/fan_diagram_deposicion.png` / `duna_bidispersa_deposicion.mp4`.
+
+**Pendiente:** quedan "ganchos" de cizalle cerca de la superficie (volteo de las
+láminas por el perfil de velocidad de la capa activa) y algo de lavado residual
+en el pie delgado del stoss sobre corridas largas.
+
 ## Archivos generados
 
 ```
@@ -115,7 +162,9 @@ outputs/
 ├── fan_diagram_HO.png
 ├── duna_bidispersa_HO_curva.mp4 / .png  (MUSCL+Rusanov, geometría curva)
 ├── fan_diagram_HO_curva.png
+├── duna_bidispersa_deposicion.mp4 / .png (WENO5, armor+foresets+avalanchas)
+├── fan_diagram_deposicion.png
 ├── comparacion_upwind_vs_muscl.png      (figura 2x5 solicitada)
-├── snapshots_final.npz / snapshots_HO.npz / snapshots_HO_curva.npz
-└── log_final.txt / log_HO.txt / log_HO_curva.txt
+├── snapshots_final.npz / snapshots_HO.npz / snapshots_HO_curva.npz / snapshots_deposicion.npz
+└── log_final.txt / log_HO.txt / log_HO_curva.txt / log_deposicion.txt
 ```

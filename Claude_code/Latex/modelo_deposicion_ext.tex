@@ -1,0 +1,569 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{hyperref}
+
+\geometry{left=2.5cm, right=2.5cm, top=2.5cm, bottom=2.5cm}
+
+\title{\textbf{Desarrollo del Modelo Matemático de la Duna Bidispersa\\[4pt]
+con Deposición por Avalanchas y Capa Activa Confinada\\[6pt]
+\large (\texttt{dune\_bidispersa\_deposicion\_ext.py})}}
+\author{Felipe Espinoza}
+\date{\today}
+
+\newcommand{\dd}{\mathrm{d}}
+\newcommand{\pd}[2]{\dfrac{\partial #1}{\partial #2}}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+% ======================================================================
+\section{Introducción y alcance}
+Este documento describe la formulación matemática y numérica del modelo
+implementado en \texttt{dune\_bidispersa\_deposicion\_ext.py}. El código
+simula la evolución de la concentración volumétrica de finos
+$\phi_s(x,\eta,t)\in[0,1]$ dentro de una duna bidispersa (dos tamaños de
+grano: finos $d_s$ y gruesos $d_l>d_s$) que migra sobre un lecho. El modelo
+parte del esquema clásico de advección--segregación--difusión de Trewhela,
+Ancey \& Gray (2021) y de la fenomenología de \emph{grain-flows} de
+Kleinhans (2004), pero incorpora cinco adaptaciones que son el objeto
+principal de este análisis:
+\begin{enumerate}
+    \item \textbf{Cambio de variable} $Q=h\,\phi_s$ y transformación a
+    coordenadas $\sigma$ (Sección~\ref{sec:cambio}).
+    \item \textbf{Confinamiento de la capa activa} y \textbf{desacople} de
+    la tasa de corte respecto de la advección (Sección~\ref{sec:confin}).
+    \item \textbf{Piso de presión} que regulariza la velocidad de
+    segregación (Sección~\ref{sec:trewhela}).
+    \item \textbf{Deposición por avalanchas discretas} en la superficie del
+    sotavento (Sección~\ref{sec:borde}).
+    \item \textbf{Esquema de alto orden} WENO5 (horizontal) y MUSCL+Rusanov
+    (vertical) para preservar la laminación (Sección~\ref{sec:numerico}).
+\end{enumerate}
+La relación de tamaños es $R = d_l/d_s = 3.33$ con $d_l=1.0$~mm y
+$d_s=0.3$~mm, y la composición media es constante, $\phi_s=0.70$.
+
+% ======================================================================
+\section{Marco comóvil y geometría de la duna}
+\label{sec:geom}
+La duna migra a celeridad $c_{\mathrm{mig}}$ en el marco de laboratorio.
+Para trabajar sobre una malla fija se adopta el \textbf{marco comóvil},
+donde la forma de la duna es estacionaria:
+\begin{equation}
+    x_{\mathrm{lab}} = x + c_{\mathrm{mig}}\,t .
+\end{equation}
+La topografía triangular (versión \texttt{ext}) se define a trozos:
+\begin{equation}
+    h(x) = \begin{cases}
+        H_{\mathrm{base}} + H_d\,\dfrac{x}{x_{\mathrm{crest}}}, & 0\le x \le x_{\mathrm{crest}} \quad\text{(barlovento / stoss)}\\[10pt]
+        H_{\mathrm{base}} + H_d\left(1 - \dfrac{x-x_{\mathrm{crest}}}{L_{\mathrm{lee}}}\right), & x_{\mathrm{crest}} < x \le L_{\mathrm{dune}} \quad\text{(sotavento / lee)},
+    \end{cases}
+    \label{eq:h_tri}
+\end{equation}
+con pendiente constante por tramos
+\begin{equation}
+    \frac{\dd h}{\dd x} = \begin{cases}
+        +H_d/x_{\mathrm{crest}} > 0 & \text{(stoss, suave)}\\[4pt]
+        -H_d/L_{\mathrm{lee}} < 0 & \text{(lee, al ángulo de reposo }\alpha_{\mathrm{lee}}=30^\circ).
+    \end{cases}
+\end{equation}
+Aquí $H_d=8$~mm es la altura, $L_{\mathrm{dune}}=100$~mm la longitud,
+$H_{\mathrm{base}}=1$~mm un lecho base (escala de $\eta$), y
+$L_{\mathrm{lee}}=H_d/\tan\alpha_{\mathrm{lee}}$. En la
+Sección~\ref{sec:curva} se reemplaza esta geometría por una versión curva
+con stoss convexo.
+
+\paragraph{Escala de migración de demostración.}
+La celeridad física es $c_{\mathrm{mig,fis}}=0.3$~mm/min. Como a esa
+velocidad la duna casi no renueva su volumen en tiempo de cómputo
+razonable, se usa un factor de demostración
+$c_{\mathrm{mig}} = \texttt{demo\_speedup}\cdot c_{\mathrm{mig,fis}}$ con
+$\texttt{demo\_speedup}=10$. Esto \emph{no} altera la física del sorting;
+solo acelera el reciclaje del material.
+
+% ======================================================================
+\section{Cambio de variable $Q=h\,\phi_s$ y ecuación gobernante}
+\label{sec:cambio}
+\subsection{Coordenadas $\sigma$ y masa conservada}
+Se introduce la coordenada vertical normalizada
+\begin{equation}
+    \eta = \frac{z}{h(x)} \in [0,1], \qquad z=\eta\,h(x),
+\end{equation}
+que mapea el dominio físico de altura variable a un rectángulo fijo
+($\eta=0$ base, $\eta=1$ superficie). La masa total de finos es
+\begin{equation}
+    M_{\mathrm{finos}} = \int_0^L\!\!\int_0^{h(x)} \phi_s\,\dd z\,\dd x
+    = \int_0^L\!\!\int_0^1 \underbrace{h(x)\,\phi_s}_{\textstyle Q}\,\dd\eta\,\dd x .
+\end{equation}
+Al resolver directamente para $Q=h\,\phi_s$ (espesor equivalente de finos),
+la masa de cada celda es $Q\,\dd x\,\dd\eta$ con $\dd x,\dd\eta$
+constantes, lo que garantiza conservación estricta de masa ante cualquier
+deformación de $h$.
+
+\subsection{Forma conservativa en $\sigma$}
+Partiendo de la conservación cartesiana de la fase fina para un flujo
+incompresible ($\nabla\cdot\vec u=0$),
+\begin{equation}
+    \pd{\phi_s}{t} + \pd{(u\phi_s)}{x} + \pd{(w\phi_s)}{z}
+    + \pd{F_{\mathrm{seg}}}{z}
+    = \pd{}{z}\!\left(D_{sl}\,\pd{\phi_s}{z}\right),
+    \label{eq:cart}
+\end{equation}
+y aplicando la regla de la cadena a $(x,z,t)\to(x,\eta,t)$ junto con el
+cambio $Q=h\phi_s$ (derivación completa en la Sección~\ref{sec:derivacion}),
+se obtiene la \textbf{forma conservativa estricta} que resuelve el código:
+\begin{equation}
+    \boxed{\;\pd{Q}{t} + \pd{(u\,Q)}{x}
+    + \pd{}{\eta}\Big[\, F_{\mathrm{adv},\eta} + F_{\mathrm{seg},\eta} - F_{\mathrm{diff},\eta} \,\Big] = 0\;}
+    \label{eq:conservativa}
+\end{equation}
+con los tres flujos verticales
+\begin{align}
+    F_{\mathrm{adv},\eta} &= \Big(w - \eta\,\pd{h}{t} - \eta\,u\,\pd{h}{x}\Big)\phi_s \;=\; (h\,w_\eta)\,\phi_s , \label{eq:Fadv}\\
+    F_{\mathrm{seg},\eta} &= -\,f_{sl}\,\phi_s(1-\phi_s), \label{eq:Fseg}\\
+    F_{\mathrm{diff},\eta} &= \frac{D_{sl}}{h}\,\pd{\phi_s}{\eta}. \label{eq:Fdiff}
+\end{align}
+El término $w_\eta = \dfrac{1}{h}\big(w - \eta\,\partial_t h - \eta\,u\,\partial_x h\big)$
+es la velocidad ``de malla'' que cruza las superficies $\eta=$ cte.
+
+\subsection{Derivación detallada: de la Ec.~\eqref{eq:cart} a la Ec.~\eqref{eq:conservativa}}
+\label{sec:derivacion}
+Esta subsección desarrolla explícitamente el paso algebraico que conecta
+la ley de conservación cartesiana \eqref{eq:cart} con la forma
+conservativa en $\sigma$ \eqref{eq:conservativa}, en la notación de este
+documento ($\eta = z/h(x,t)$, sin el desplazamiento $H_{\mathrm{base}}$
+que usa la derivación alternativa de \texttt{dif\_adv\_seg.tex}).
+
+\subsubsection{Paso 1: operadores diferenciales en las nuevas coordenadas}
+Con $\eta = z/h(x,t)$, es decir $z = \eta\,h(x,t)$, la regla de la cadena
+(manteniendo $z$ fijo al derivar respecto de $x$ o $t$) da:
+\begin{align}
+    \pd{\eta}{z} &= \frac{1}{h}
+    &&\Longrightarrow\quad
+    \boxed{\pd{}{z} = \frac{1}{h}\pd{}{\eta}}, \label{eq:dz}\\[6pt]
+    \pd{\eta}{x}\bigg|_z &= -\frac{z}{h^2}\pd{h}{x} = -\frac{\eta}{h}\pd{h}{x}
+    &&\Longrightarrow\quad
+    \boxed{\pd{}{x}\bigg|_z = \pd{}{x}\bigg|_\eta - \frac{\eta}{h}\pd{h}{x}\,\pd{}{\eta}}, \label{eq:dx}\\[6pt]
+    \pd{\eta}{t}\bigg|_z &= -\frac{\eta}{h}\pd{h}{t}
+    &&\Longrightarrow\quad
+    \boxed{\pd{}{t}\bigg|_z = \pd{}{t}\bigg|_\eta - \frac{\eta}{h}\pd{h}{t}\,\pd{}{\eta}}. \label{eq:dt}
+\end{align}
+
+\subsubsection{Paso 2: sustitución término a término en la Ec.~\eqref{eq:cart}}
+Aplicando \eqref{eq:dz}--\eqref{eq:dt} a cada término de \eqref{eq:cart}:
+\begin{align}
+    \pd{\phi_s}{t} &= \pd{\phi_s}{t} - \frac{\eta}{h}\pd{h}{t}\pd{\phi_s}{\eta}, \\
+    \pd{(u\phi_s)}{x} &= \pd{(u\phi_s)}{x} - \frac{\eta}{h}\pd{h}{x}\pd{(u\phi_s)}{\eta}, \\
+    \pd{(w\phi_s)}{z} &= \frac1h\pd{(w\phi_s)}{\eta}, \qquad
+    \pd{F_{\mathrm{seg}}}{z} = \frac1h\pd{F_{\mathrm{seg}}}{\eta}, \\
+    \pd{}{z}\!\left(D_{sl}\pd{\phi_s}{z}\right) &= \frac1h\pd{}{\eta}\!\left(\frac{D_{sl}}{h}\pd{\phi_s}{\eta}\right).
+\end{align}
+Sumando todos los términos e igualando a cero, y multiplicando la
+ecuación completa por $h$ para eliminar los denominadores, se obtiene:
+\begin{multline}
+    h\pd{\phi_s}{t} - \eta\,\pd{h}{t}\pd{\phi_s}{\eta}
+    + h\pd{(u\phi_s)}{x} - \eta\,\pd{h}{x}\pd{(u\phi_s)}{\eta} \\
+    + \pd{(w\phi_s)}{\eta} + \pd{F_{\mathrm{seg}}}{\eta}
+    - \pd{}{\eta}\!\left(\frac{D_{sl}}{h}\pd{\phi_s}{\eta}\right) = 0.
+    \label{eq:ast}
+\end{multline}
+
+\subsubsection{Paso 3: introducción de $Q=h\phi_s$ vía regla del producto}
+Como $h$ no depende de $\eta$, la regla del producto da las identidades
+\begin{align}
+    \pd{Q}{t} = \pd{(h\phi_s)}{t} = h\pd{\phi_s}{t} + \phi_s\pd{h}{t}
+    &\;\Longrightarrow\; h\pd{\phi_s}{t} = \pd{Q}{t} - \phi_s\pd{h}{t}, \label{eq:idQt}\\
+    \pd{(uQ)}{x} = \pd{(hu\phi_s)}{x} = h\pd{(u\phi_s)}{x} + u\phi_s\pd{h}{x}
+    &\;\Longrightarrow\; h\pd{(u\phi_s)}{x} = \pd{(uQ)}{x} - u\phi_s\pd{h}{x}. \label{eq:idQx}
+\end{align}
+Sustituyendo \eqref{eq:idQt} y \eqref{eq:idQx} en \eqref{eq:ast}:
+\begin{multline}
+    \left[\pd{Q}{t} - \phi_s\pd{h}{t}\right] - \eta\,\pd{h}{t}\pd{\phi_s}{\eta}
+    + \left[\pd{(uQ)}{x} - u\phi_s\pd{h}{x}\right] - \eta\,\pd{h}{x}\pd{(u\phi_s)}{\eta} \\
+    + \pd{(w\phi_s)}{\eta} + \pd{F_{\mathrm{seg}}}{\eta}
+    - \pd{}{\eta}\!\left(\frac{D_{sl}}{h}\pd{\phi_s}{\eta}\right) = 0.
+    \label{eq:paso3}
+\end{multline}
+
+\subsubsection{Paso 4: agrupación de los términos topográficos bajo $\partial/\partial\eta$}
+Los términos que involucran $\partial h/\partial t$ en \eqref{eq:paso3} se
+agrupan reconociendo la regla del producto inversa
+$\partial(\eta\phi_s)/\partial\eta = \phi_s + \eta\,\partial\phi_s/\partial\eta$:
+\begin{equation}
+    -\phi_s\pd{h}{t} - \eta\,\pd{h}{t}\pd{\phi_s}{\eta}
+    = -\pd{h}{t}\underbrace{\left[\phi_s + \eta\pd{\phi_s}{\eta}\right]}_{\partial(\eta\phi_s)/\partial\eta}
+    = -\pd{}{\eta}\!\left(\eta\,\phi_s\,\pd{h}{t}\right),
+    \label{eq:grupo_t}
+\end{equation}
+donde el último paso vale porque $\partial h/\partial t$ no depende de
+$\eta$ y puede introducirse dentro de la derivada. Análogamente, con
+$\partial(\eta u\phi_s)/\partial\eta = u\phi_s + \eta\,\partial(u\phi_s)/\partial\eta$:
+\begin{equation}
+    -u\phi_s\pd{h}{x} - \eta\,\pd{h}{x}\pd{(u\phi_s)}{\eta}
+    = -\pd{}{\eta}\!\left(\eta\,u\,\phi_s\,\pd{h}{x}\right).
+    \label{eq:grupo_x}
+\end{equation}
+
+\subsubsection{Paso 5: consolidación bajo un único operador $\partial/\partial\eta$}
+Sustituyendo \eqref{eq:grupo_t} y \eqref{eq:grupo_x} en \eqref{eq:paso3},
+todas las derivadas respecto a $\eta$ quedan bajo un solo corchete:
+\begin{equation}
+    \pd{Q}{t} + \pd{(uQ)}{x}
+    + \pd{}{\eta}\left[\, w\phi_s - \eta\,\phi_s\pd{h}{t} - \eta\,u\,\phi_s\pd{h}{x}
+    + F_{\mathrm{seg}} - \frac{D_{sl}}{h}\pd{\phi_s}{\eta} \,\right] = 0.
+    \label{eq:paso5}
+\end{equation}
+Los tres primeros términos del corchete comparten el factor $\phi_s$ y se
+factorizan directamente:
+\begin{equation}
+    w\phi_s - \eta\,\phi_s\pd{h}{t} - \eta\,u\,\phi_s\pd{h}{x}
+    = \left(w - \eta\pd{h}{t} - \eta\,u\pd{h}{x}\right)\phi_s
+    \equiv F_{\mathrm{adv},\eta},
+\end{equation}
+que es precisamente la definición \eqref{eq:Fadv}. Renombrando
+$F_{\mathrm{seg}}\to F_{\mathrm{seg},\eta}$ y
+$\dfrac{D_{sl}}{h}\dfrac{\partial\phi_s}{\partial\eta}\to F_{\mathrm{diff},\eta}$
+en \eqref{eq:paso5}, se recupera exactamente la Ec.~\eqref{eq:conservativa}:
+\begin{equation}
+    \pd{Q}{t} + \pd{(uQ)}{x}
+    + \pd{}{\eta}\Big[F_{\mathrm{adv},\eta} + F_{\mathrm{seg},\eta} - F_{\mathrm{diff},\eta}\Big] = 0. \qquad\blacksquare
+\end{equation}
+
+\paragraph{Nota sobre el signo de $F_{\mathrm{diff},\eta}$.} El signo
+negativo delante de $F_{\mathrm{diff},\eta}$ en el corchete proviene de
+que el término difusivo estaba originalmente del lado derecho de
+\eqref{eq:cart} (restando, al pasarlo al lado izquierdo cambia de signo),
+mientras que $F_{\mathrm{seg}}$ ya incluye su propio signo dentro de la
+definición $F_{\mathrm{seg}}=-f_{sl}\,\phi_s(1-\phi_s)$.
+
+% ======================================================================
+\section{Campo de velocidades}
+\label{sec:vel}
+Para garantizar incompresibilidad exacta se derivan $u$ y $w$ de una
+función de corriente $\psi = U_0 H_{\mathrm{base}}\,\eta^{m+1}\,g(x,t)$, con
+$U_0$ la escala de advección, $m$ el exponente del perfil tipo Bagnold
+(concentra el transporte cerca de $\eta=1$), y $g$ la modulación
+espacio-temporal del \emph{grain-flow}:
+\begin{equation}
+    g(x,t) = 1 + A_{\mathrm{mod}}\,\sin\!\left(\frac{2\pi t}{T_{\mathrm{period}}}\right) S_x(x),
+    \qquad
+    S_x(x) = \tfrac12 + \tfrac12\tanh\!\left(\frac{x-x_{\mathrm{crest}}}{\delta_{\mathrm{cr}}}\right).
+\end{equation}
+\subsection{Velocidad horizontal (marco comóvil)}
+\begin{equation}
+    u(x,\eta,t) = \frac{U_0\,H_{\mathrm{base}}}{h(x)}\,(m+1)\,\eta^{m}\,g(x,t)\;-\;c_{\mathrm{mig}}.
+    \label{eq:u}
+\end{equation}
+El término $-c_{\mathrm{mig}}$ es la recirculación del marco comóvil:
+es el que produce el patrón de \emph{erosión en el stoss} y
+\emph{deposición en el lee}, y hace que el interior enterrado avecte a
+$\approx -c_{\mathrm{mig}}$.
+\subsection{Velocidad vertical en $\sigma$ (libre de divergencia)}
+Por continuidad, la velocidad en las caras $\eta$ (llamada
+$\omega_{\mathrm{code}}$ en el código) es
+\begin{equation}
+    \omega_{\mathrm{code}}(x,\eta,t)
+    = c_{\mathrm{mig}}\,\eta\,\frac{\dd h}{\dd x}
+    - U_0\,H_{\mathrm{base}}\,\eta^{m+1}\,\pd{g}{x},
+    \qquad
+    \pd{g}{x} = A_{\mathrm{mod}}\sin\!\left(\tfrac{2\pi t}{T_{\mathrm{period}}}\right)\frac{\dd S_x}{\dd x}.
+    \label{eq:wcode}
+\end{equation}
+Esta construcción satisface analíticamente
+$\partial_x(h\,u) + \partial_\eta\,\omega_{\mathrm{code}} = 0$.
+
+% ======================================================================
+\section{Flujos físicos de Trewhela con capa activa confinada}
+\label{sec:trewhela}
+\label{sec:confin}
+Los cierres para $f_{sl}$ y $D_{sl}$ siguen a Trewhela et al.\ (2021), pero
+con dos modificaciones centrales de esta versión: el \textbf{desacople} de
+la tasa de corte y su \textbf{confinamiento} a la capa activa.
+
+\subsection{Tasa de corte desacoplada y confinada $\dot\gamma$}
+En el modelo clásico, $\dot\gamma=|\partial u/\partial z|$ se calcula desde
+la misma velocidad de advección \eqref{eq:u}, de modo que bajar $U_0$ para
+suavizar la advección \emph{también} apaga la segregación. Aquí se
+reconoce que el cizalle que impulsa el \emph{kinetic sieving} es el corte
+\emph{interno} de la delgada capa móvil que avalancha, fijado por su
+propia dinámica y no por la migración neta lenta del cuerpo. Se introduce
+por ello una escala de corte independiente $U_{\mathrm{shear}}\gg U_0$:
+\begin{equation}
+    \dot\gamma(x,\eta,t) =
+    \underbrace{\frac{U_{\mathrm{shear}}\,H_{\mathrm{base}}}{h_{\mathrm{eff}}^2(x)}\,m(m+1)\,\eta^{m-1}\,g(x,t)}_{\text{corte tipo Bagnold}}
+    \;\cdot\;
+    \underbrace{\vphantom{\frac{1}{h^2}}W_{\mathrm{act}}(x,\eta)}_{\text{confinamiento}},
+    \label{eq:gammadot}
+\end{equation}
+donde $h_{\mathrm{eff}} = \max\!\big(h,\,2.5\,\delta_a\big)$ es un piso de
+espesor que evita la divergencia $1/h^2$ en los pies delgados, y
+$\delta_a=1.5$~mm es el espesor de la capa activa.
+
+\paragraph{Ventana de capa activa.}
+La segregación y la difusión granular solo ocurren en la capa superficial
+que cizalla (espesor $\sim\delta_a$); debajo, los granos están bloqueados y
+la estructura enterrada queda \emph{congelada}. Esto se impone con una
+ventana tipo escalón suave en la profundidad física bajo la superficie,
+$z_{\downarrow}=(1-\eta)\,h$:
+\begin{equation}
+    W_{\mathrm{act}}(x,\eta) = \tfrac12\left[\,1 - \tanh\!\left(\frac{z_{\downarrow}-\delta_a}{w_{\tanh}}\right)\right],
+    \qquad w_{\tanh}=0.3~\text{mm}.
+    \label{eq:Wact}
+\end{equation}
+Se eligió un escalón $\tanh$ y no una Gaussiana porque esta última todavía
+vale $\sim6\%$ a media profundidad y, multiplicada por miles de sub-pasos
+verticales, terminaba lavando las láminas enterradas. El escalón confina
+$\dot\gamma$ (y por tanto $f_{sl}$ y $D_{sl}$) \emph{estrictamente} a la
+capa activa.
+
+\subsection{Diámetro medio, asimetría y velocidad de segregación}
+\begin{align}
+    \bar d(\phi_s) &= (1-\phi_s)\,d_l + \phi_s\,d_s, \\
+    F(R,\phi_s) &= (R-1) + E\,(1-\phi_s)(R-1)^2, \\
+    f_{sl} &= \frac{B\,\dot\gamma\,\bar d^2}{C\,\bar d + p(x,\eta)}\;F(R,\phi_s),
+    \label{eq:fsl}\\
+    D_{sl} &= A\,\dot\gamma\,\bar d^2 .
+    \label{eq:Dsl}
+\end{align}
+El flujo segregativo completo es $F_{\mathrm{seg}}=-f_{sl}\,\phi_s(1-\phi_s)$
+(el factor $\phi_s(1-\phi_s)$ apaga la segregación en zonas puras).
+
+\paragraph{Piso de presión (regularización).}
+La presión litostática granular es
+\begin{equation}
+    p(x,\eta) = \nu\,h(x)\,(1-\eta) \;+\; p_{\mathrm{floor}},
+    \qquad p_{\mathrm{floor}} = 3\,\nu\,\delta_a ,
+    \label{eq:p}
+\end{equation}
+con $\nu=0.6$ la fracción de empaquetamiento. En la superficie
+($\eta\to1$) la presión litostática $\nu h(1-\eta)\to0$ y $f_{sl}$
+\eqref{eq:fsl} divergía, forzando pasos de tiempo diminutos
+($n_{\mathrm{sub}}\sim10^3$--$10^4$). El piso $p_{\mathrm{floor}}$
+representa el \emph{overburden} mínimo bajo el cual el flujo de segregación
+\emph{satura} en vez de diverger; reduce $f_{sl,\max}$ de $\sim$390 a
+$\sim$18~mm/s y $n_{\mathrm{sub}}$ en un factor $\sim7$, disminuyendo así
+la sobre-aplicación del operador vertical (y su difusión numérica).
+
+\begin{table}[h!]
+\centering
+\caption{Constantes de Trewhela et al.\ (2021) y parámetros de la capa activa.}
+\vspace{0.2cm}
+\begin{tabular}{llcl}
+\toprule
+\textbf{Parámetro} & \textbf{Símbolo} & \textbf{Valor} & \textbf{Descripción}\\
+\midrule
+Constante de difusión    & $A$ & $0.108$ & Adimensional\\
+Constante de segregación & $B$ & $0.3744$ & Adimensional\\
+Constante de presión     & $C$ & $0.2712$ & Adimensional\\
+Constante de asimetría   & $E$ & $2.0957$ & Adimensional\\
+Empaquetamiento sólido   & $\nu$ & $0.6$ & Compactación del lecho\\
+Escala de corte activo   & $U_{\mathrm{shear}}$ & $0.015$~m/s & Desacoplada de $U_0=3\times10^{-4}$~m/s\\
+Espesor de capa activa   & $\delta_a$ & $1.5$~mm & Ancho de $W_{\mathrm{act}}$\\
+Piso de presión          & $p_{\mathrm{floor}}$ & $3\nu\delta_a$ & Regulariza $f_{sl}$\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ======================================================================
+\section{Condiciones de borde: deposición por avalanchas}
+\label{sec:borde}
+\paragraph{Base ($\eta=0$).} Impermeable: $F_\eta|_{\eta=0}=0$.
+
+\paragraph{Superficie ($\eta=1$).} Frontera abierta con balance de masa
+según el signo de $\omega_{\mathrm{code}}$. En el \emph{stoss}
+($\omega_{\mathrm{code}}\ge0$, erosión) el material sale con la
+concentración local; en el \emph{lee} ($\omega_{\mathrm{code}}<0$,
+deposición) entra con una composición sorteada
+\begin{equation}
+    \phi_{\mathrm{in}}(x,t) = \mathrm{clip}\!\Big(\lambda(t)\,P_{\mathrm{spat}}(x)\,P_{\mathrm{temp}}(t),\,0,\,1\Big),
+\end{equation}
+donde $P_{\mathrm{spat}}$ impone el sorteo espacial (grueso al pie, fino a
+la cresta; Kleinhans 2004) y $\lambda(t)$ cierra el balance masa
+erosionada $=$ masa depositada en cada instante:
+\begin{equation}
+    P_{\mathrm{spat}}(x) = \max\!\Big(0.1,\; 1 + 0.6\big(0.5 - s_{\mathrm{lee}}(x)\big)\Big),
+    \qquad
+    \lambda = \frac{\sum_{\mathrm{stoss}} \omega_{\mathrm{code}}\,\phi_s|_{\eta=1}}{\sum_{\mathrm{lee}} |\omega_{\mathrm{code}}|\,P_{\mathrm{spat}}\,P_{\mathrm{temp}}}.
+\end{equation}
+
+\paragraph{Avalanchas discretas (novedad).}
+La modulación temporal que genera las láminas se agudiza respecto del seno
+suave clásico para emular avalanchas \emph{discretas} de \emph{grain-flow}
+(deposición concentrada en pulsos, con fuerte contraste grueso/fino):
+\begin{equation}
+    P_{\mathrm{temp}}(t) = 1 + A_P\,\operatorname{sign}(\sin\theta)\,|\sin\theta|^{\,p_{\mathrm{sharp}}},
+    \qquad \theta = \frac{2\pi t}{T_{\mathrm{period}}},
+    \label{eq:Ptemp}
+\end{equation}
+con $A_P=0.90$ (alta variabilidad) y $p_{\mathrm{sharp}}=0.5$ (pulso más
+``cuadrado''). Cuanto mayor $A_P$ y menor $p_{\mathrm{sharp}}$, más nítida
+la alternancia de láminas gruesas y finas.
+
+\paragraph{Bordes horizontales.} Dominio periódico en $x$: el material que
+sale por un extremo reingresa por el otro, cerrando el ciclo de reciclaje
+(grueso al pie del lee $\to$ enterramiento $\to$ reexposición en el stoss).
+
+% ======================================================================
+\section{Condición inicial}
+\label{sec:ci}
+La duna arranca como una \textbf{mezcla homogénea},
+\begin{equation}
+    \phi_s(x,\eta,0) = \phi_{s,\mathrm{target}} = 0.70 \quad \text{en todo el dominio},
+\end{equation}
+sin gradación ni estructura sembrada. Todo el patrón interno (armadura de
+gruesos superficial, lag basal de gruesos, láminas) \emph{emerge} de la
+dinámica de segregación confinada más la deposición por avalanchas.
+
+% ======================================================================
+\section{Método numérico}
+\label{sec:numerico}
+Se usa \emph{operator splitting}: un paso horizontal grande $\Delta t_h$
+seguido de un sub-ciclo vertical de $n_{\mathrm{sub}}$ pasos. Los
+coeficientes que dependen de $t$ (pero no de $\phi_s$) se ``congelan''
+durante el sub-ciclo, evaluados en $t+\tfrac12\Delta t_h$, lo que es válido
+porque $\Delta t_h\ll T_{\mathrm{period}}$.
+
+\subsection{Paso horizontal: SSP-RK2 con reconstrucción WENO5}
+El transporte horizontal $-\partial_x(uQ)$ se integra con Runge--Kutta de
+2.\textsuperscript{o} orden de estabilidad fuerte:
+\begin{align}
+    Q^\ast &= Q^n + \Delta t_h\,\mathcal{R}_x(Q^n,t^n),\\
+    Q^{n+1} &= \tfrac12 Q^n + \tfrac12\Big(Q^\ast + \Delta t_h\,\mathcal{R}_x(Q^\ast,t^n{+}\Delta t_h)\Big).
+\end{align}
+Los estados en las caras se reconstruyen con \textbf{WENO5}
+(5.\textsuperscript{o} orden). Para la cara $i+\tfrac12$ se combinan tres
+\emph{stencils} de tres celdas mediante pesos no lineales $\omega_k$
+basados en indicadores de suavidez $\beta_k$:
+\begin{equation}
+    \phi^{L}_{i+1/2} = \sum_{k=0}^{2}\omega_k\,p_k,
+    \qquad
+    \omega_k = \frac{\alpha_k}{\sum_l \alpha_l},
+    \quad
+    \alpha_k = \frac{d_k}{(\varepsilon+\beta_k)^2},
+\end{equation}
+con pesos lineales $d=(0.1,\,0.6,\,0.3)$ y $\varepsilon=10^{-6}$. En zonas
+suaves WENO5 alcanza 5.\textsuperscript{o} orden (difusión numérica
+$\sim\Delta x^5$), y cerca de un frente se reduce a un \emph{stencil} ENO
+no oscilatorio. Este esquema reemplazó al MUSCL de 2.\textsuperscript{o}
+orden ($\sim\Delta x^3$) precisamente porque este último difuminaba las
+láminas de foreset advectadas. Como el flujo $u\phi$ es lineal en $\phi$
+(para $u$ dado), basta el flujo \emph{upwind} exacto con los estados
+reconstruidos.
+
+\subsection{Sub-ciclo vertical: MUSCL + Rusanov + difusión centrada}
+Cada sub-paso vertical aplica Euler explícito al flujo
+$F_\eta=F_{\mathrm{adv},\eta}+F_{\mathrm{seg},\eta}-F_{\mathrm{diff},\eta}$.
+Los estados en las caras interiores se reconstruyen con pendientes
+limitadas por \textbf{minmod}:
+\begin{equation}
+    \sigma_j = \operatorname{minmod}\!\big(\phi_j-\phi_{j-1},\ \phi_{j+1}-\phi_j\big),
+    \qquad
+    \phi^{\pm} = \phi_j \pm \tfrac12\sigma_j .
+\end{equation}
+\begin{itemize}
+    \item \textbf{Advección vertical} (lineal): \emph{upwind} exacto con los
+    estados reconstruidos.
+    \item \textbf{Segregación} (no lineal, $F(\phi)=-f_{sl}\phi(1-\phi)$):
+    flujo de \textbf{Rusanov} (Lax--Friedrichs local)
+    \begin{equation}
+        F^{\mathrm{num}}_{\mathrm{seg}} = \tfrac12\big[F(\phi^L)+F(\phi^R)\big]
+        - \tfrac12\,a_{\max}\,(\phi^R-\phi^L),
+        \quad
+        a_{\max} = f_{sl}\,\max\!\big(|1-2\phi^L|,\,|1-2\phi^R|\big),
+    \end{equation}
+    donde $a_{\max}$ acota $|\dd F/\dd\phi|$.
+    \item \textbf{Difusión}: diferencias centradas (ya es 2.\textsuperscript{o}
+    orden) del flujo $F_{\mathrm{diff},\eta}=(D_{sl}/h)\,\partial_\eta\phi$.
+\end{itemize}
+
+\subsection{Paso de tiempo (CFL) y sub-ciclado}
+\begin{equation}
+    \Delta t_h = 0.5\,\frac{\dd x}{u_{\max}},
+    \qquad
+    \Delta t_v = \min\!\left(
+    0.5\,\frac{\dd\eta\,\min h}{w_{\eta,\max}+f_{sl,\max}},\;\;
+    0.45\,\frac{(\dd\eta\,\min h)^2}{D_{sl,\max}}\right),
+\end{equation}
+y $n_{\mathrm{sub}}=\lceil \Delta t_h/\Delta t_v\rceil$. El primer término
+de $\Delta t_v$ es la restricción advectiva/segregativa y el segundo la
+difusiva (parabólica).
+
+\subsection{Acotamiento y conservación de masa}
+Tras cada operación se impone $\phi_s\in[0,1]$: un recorte simple dentro
+del sub-ciclo y un recorte \emph{conservativo} (\texttt{\_clip\_conserv},
+barrido bidireccional en $\eta$ que redistribuye el exceso/déficit dentro
+de cada columna) al final de cada paso. Finalmente se aplica una
+corrección multiplicativa global
+\begin{equation}
+    Q \leftarrow Q\cdot \frac{M_0}{\sum_{i,j}Q_{i,j}\,\dd x\,\dd\eta},
+\end{equation}
+que elimina el error de redondeo acumulado. Con esto,
+$\langle\phi_s\rangle=0.700000$ se mantiene constante en toda la corrida.
+
+\paragraph{Malla y tiempo.} $N_x=160$, $N_z=40$, $t_{\max}=2400$~s. La
+alta resolución, junto con WENO5 y el piso de presión, es lo que permite
+que las láminas advectadas sobrevivan sin lavarse numéricamente.
+
+% ======================================================================
+\section{Adaptaciones para la versión curva}
+\label{sec:curva}
+La versión curva (\texttt{dune\_bidispersa\_deposicion\_ext\_curva.py})
+comparte \emph{exactamente} toda la física y numérica anteriores
+(Secciones \ref{sec:cambio}--\ref{sec:numerico}). El \textbf{único} cambio
+es la geometría $h(x)$, para pasar de la duna triangular a una silueta de
+duna real (comparable con la imagen experimental). Se introdujeron tres
+modificaciones sobre \eqref{eq:h_tri}:
+
+\paragraph{1. Stoss convexo (ley de potencia).} El barlovento recto se
+reemplaza por una ley de potencia con exponente $p_{\mathrm{stoss}}<1$, que
+lo hace \emph{convexo} (se empina rápido desde el pie y se aplana hacia la
+cresta, abombándose por encima de la recta, $\dd^2h/\dd x^2<0$):
+\begin{equation}
+    h_{\mathrm{stoss}}(x) = H_{\mathrm{base}} + H_d\left(\frac{x}{x_{\mathrm{crest}}}\right)^{p_{\mathrm{stoss}}},
+    \qquad p_{\mathrm{stoss}} = 0.55 .
+\end{equation}
+El lee se mantiene recto al ángulo de reposo (30\textsuperscript{o}).
+
+\paragraph{2. Suavizado de la cresta (continuidad $C^1$).} El perfil a
+trozos $h_{\mathrm{tent}}$ (stoss convexo $+$ lee recto) se convoluciona
+con un filtro Gaussiano periódico para eliminar el quiebre de pendiente en
+la cresta:
+\begin{equation}
+    \tilde h = \mathcal{G}_{\sigma_s} \ast h_{\mathrm{tent}},
+    \qquad \sigma_s = 6~\text{celdas} \ (\approx 3.75~\text{mm}).
+\end{equation}
+Como el núcleo Gaussiano es no negativo, el suavizado es un promedio
+ponderado de pendientes vecinas y \emph{nunca} excede la pendiente máxima
+original; así $\alpha_{\mathrm{lee}}=30^\circ$ sigue siendo la pendiente
+\emph{máxima} local del lee (ya no constante).
+
+\paragraph{3. Reescalado y pendiente continua.} Se reescala para conservar
+la altura física $H_d$ en la cresta y se calcula $\dd h/\dd x$ por
+diferencias centradas periódicas:
+\begin{equation}
+    h = H_{\mathrm{base}} + (\tilde h - H_{\mathrm{base}})\,\frac{H_d}{\max(\tilde h)-H_{\mathrm{base}}},
+    \qquad
+    \frac{\dd h}{\dd x}\Big|_i = \frac{h_{i+1}-h_{i-1}}{2\,\dd x}.
+\end{equation}
+
+\paragraph{Efecto físico.} La motivación numérica es que la topografía
+triangular tiene $\dd h/\dd x$ \emph{discontinua} en la cresta, y esa
+discontinuidad entra directamente en la velocidad vertical
+$\omega_{\mathrm{code}}$ \eqref{eq:wcode} (vía $c_{\mathrm{mig}}\,\eta\,
+\dd h/\dd x$), contaminando el corte de segregación cerca de la cresta. Con
+la geometría curva $\dd h/\dd x$ es continua en toda la duna: desaparece
+ese artefacto y la silueta (cresta redondeada $+$ stoss convexo abombado)
+reproduce la forma observada en el experimento. La estructura de
+segregación resultante (lag basal de gruesos bajo un cuerpo rico en finos)
+es la misma que en la versión triangular, confirmando que la forma altera
+la apariencia pero no el mecanismo de \emph{sorting}.
+
+\end{document}
