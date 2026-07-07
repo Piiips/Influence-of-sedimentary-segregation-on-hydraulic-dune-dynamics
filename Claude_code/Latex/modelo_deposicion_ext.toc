@@ -1,0 +1,39 @@
+\babel@toc {spanish}{}\relax 
+\contentsline {section}{\numberline {1}Introducción y alcance}{2}{section.1}%
+\contentsline {section}{\numberline {2}Marco comóvil y geometría de la duna}{2}{section.2}%
+\contentsline {paragraph}{Escala de migración de demostración.}{2}{section*.2}%
+\contentsline {section}{\numberline {3}Cambio de variable $Q=h\,\phi _s$ y ecuación gobernante}{3}{section.3}%
+\contentsline {subsection}{\numberline {3.1}Coordenadas $\sigma $ y masa conservada}{3}{subsection.3.1}%
+\contentsline {subsection}{\numberline {3.2}Forma conservativa en $\sigma $}{3}{subsection.3.2}%
+\contentsline {subsection}{\numberline {3.3}Derivación detallada: de la Ec.~\eqref {eq:cart} a la Ec.~\eqref {eq:conservativa}}{3}{subsection.3.3}%
+\contentsline {subsubsection}{\numberline {3.3.1}Paso 1: operadores diferenciales en las nuevas coordenadas}{4}{subsubsection.3.3.1}%
+\contentsline {subsubsection}{\numberline {3.3.2}Paso 2: sustitución término a término en la Ec.~\eqref {eq:cart}}{4}{subsubsection.3.3.2}%
+\contentsline {subsubsection}{\numberline {3.3.3}Paso 3: introducción de $Q=h\phi _s$ vía regla del producto}{4}{subsubsection.3.3.3}%
+\contentsline {subsubsection}{\numberline {3.3.4}Paso 4: agrupación de los términos topográficos bajo $\partial /\partial \eta $}{5}{subsubsection.3.3.4}%
+\contentsline {subsubsection}{\numberline {3.3.5}Paso 5: consolidación bajo un único operador $\partial /\partial \eta $}{5}{subsubsection.3.3.5}%
+\contentsline {paragraph}{Nota sobre el signo de $F_{\mathrm {diff},\eta }$.}{5}{section*.3}%
+\contentsline {section}{\numberline {4}Campo de velocidades}{5}{section.4}%
+\contentsline {subsection}{\numberline {4.1}Velocidad horizontal (marco comóvil)}{5}{subsection.4.1}%
+\contentsline {subsection}{\numberline {4.2}Velocidad vertical en $\sigma $ (libre de divergencia)}{6}{subsection.4.2}%
+\contentsline {section}{\numberline {5}Flujos físicos de Trewhela con capa activa confinada}{6}{section.5}%
+\contentsline {subsection}{\numberline {5.1}Tasa de corte desacoplada y confinada $\dot \gamma $}{6}{subsection.5.1}%
+\contentsline {paragraph}{Ventana de capa activa.}{6}{section*.4}%
+\contentsline {subsection}{\numberline {5.2}Diámetro medio, asimetría y velocidad de segregación}{6}{subsection.5.2}%
+\contentsline {paragraph}{Piso de presión (regularización).}{7}{section*.5}%
+\contentsline {section}{\numberline {6}Condiciones de borde: deposición por avalanchas}{7}{section.6}%
+\contentsline {paragraph}{Base ($\eta =0$).}{7}{section*.6}%
+\contentsline {paragraph}{Superficie ($\eta =1$).}{7}{section*.7}%
+\contentsline {paragraph}{Avalanchas discretas (novedad).}{7}{section*.8}%
+\contentsline {paragraph}{Bordes horizontales.}{7}{section*.9}%
+\contentsline {section}{\numberline {7}Condición inicial}{8}{section.7}%
+\contentsline {section}{\numberline {8}Método numérico}{8}{section.8}%
+\contentsline {subsection}{\numberline {8.1}Paso horizontal: SSP-RK2 con reconstrucción WENO5}{8}{subsection.8.1}%
+\contentsline {subsection}{\numberline {8.2}Sub-ciclo vertical: MUSCL + Rusanov + difusión centrada}{8}{subsection.8.2}%
+\contentsline {subsection}{\numberline {8.3}Paso de tiempo (CFL) y sub-ciclado}{9}{subsection.8.3}%
+\contentsline {subsection}{\numberline {8.4}Acotamiento y conservación de masa}{9}{subsection.8.4}%
+\contentsline {paragraph}{Malla y tiempo.}{9}{section*.10}%
+\contentsline {section}{\numberline {9}Adaptaciones para la versión curva}{9}{section.9}%
+\contentsline {paragraph}{1. Stoss convexo (ley de potencia).}{9}{section*.11}%
+\contentsline {paragraph}{2. Suavizado de la cresta (continuidad $C^1$).}{9}{section*.12}%
+\contentsline {paragraph}{3. Reescalado y pendiente continua.}{9}{section*.13}%
+\contentsline {paragraph}{Efecto físico.}{10}{section*.14}%
