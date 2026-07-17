@@ -1,0 +1,23 @@
+# === macOS ===
+.DS_Store
+
+# === Python ===
+__pycache__/
+*.pyc
+*.pyo
+
+# === Salidas de simulación (regenerables; no versionar) ===
+outputs/
+Claude_code/outputs/
+
+# === Artefactos de compilación LaTeX ===
+*.aux
+*.log
+*.fls
+*.fdb_latexmk
+*.nav
+*.toc
+*.synctex.gz
+*.out
+*.snm
+*.vrb
