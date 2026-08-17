@@ -29,8 +29,8 @@ se sobrescriben en cada corrida):
 
 FÍSICA (idéntica al modelo original; ver esa docstring para el detalle):
   PDE de Gray & Chugunov (2006) / Trewhela, Ancey & Gray (2021):
-    Q(x,η,t) = h(x)·φ_s(x,η,t),   η = z/h(x) ∈ [0,1]
-    dQ/dt + ∂/∂x(u·Q) + ∂/∂η[w_η·φ_s − f_sl·φ_s·(1−φ_s) − D_sl/h·∂φ_s/∂η] = 0
+    h_phi(x,η,t) = h(x)·φ_s(x,η,t),   η = z/h(x) ∈ [0,1]
+    d(h_phi)/dt + ∂/∂x(u·h_phi) + ∂/∂η[w_η·φ_s − f_sl·φ_s·(1−φ_s) − D_sl/h·∂φ_s/∂η] = 0
   Esquemas: WENO5 en x, MUSCL+Rusanov en η, operator splitting horiz/vert.
 ================================================================================
 """
@@ -45,8 +45,17 @@ import cv2, os, time
 
 plt.rcParams.update({
     'font.family': 'serif',
-    'font.serif': ['DejaVu Serif', 'Times New Roman', 'Liberation Serif'],
-    'mathtext.fontset': 'dejavuserif',
+    'font.serif': ['Times New Roman', 'DejaVu Serif', 'Liberation Serif'],
+    'mathtext.fontset': 'custom',
+    'mathtext.rm': 'Times New Roman',
+    'mathtext.it': 'Times New Roman:italic',
+    'mathtext.bf': 'Times New Roman:bold',
+    'font.size': 12,
+    'axes.labelsize': 14,
+    'axes.titlesize': 14,
+    'xtick.labelsize': 12,
+    'ytick.labelsize': 12,
+    'legend.fontsize': 12,
 })
 
 # #############################################################################
@@ -213,15 +222,15 @@ os.makedirs(out_dir, exist_ok=True)
 # =============================================================================
 # 4. NÚCLEO DEL SOLVER
 # =============================================================================
-def _clip_simple(Q_in):
+def _clip_simple(h_phi_in):
     """Recorte vectorizado rápido φ∈[0,1]. Usado dentro del sub-ciclo."""
-    return h2 * np.clip(Q_in / np.maximum(h2, 1e-9), 0.0, 1.0)
+    return h2 * np.clip(h_phi_in / np.maximum(h2, 1e-9), 0.0, 1.0)
 
 
-def _clip_conserv(Q_in):
+def _clip_conserv(h_phi_in):
     """Recorte con barrido bidireccional en η que redistribuye el exceso/déficit
     de masa localmente dentro de cada columna vertical (conservativo en x)."""
-    phi = np.clip(Q_in / np.maximum(h2, 1e-9), 0.0, 1.0)
+    phi = np.clip(h_phi_in / np.maximum(h2, 1e-9), 0.0, 1.0)
     exc = np.zeros(Nx)
     for j in range(Nz):
         v = phi[:, j] + exc;  ov = v > 1.0
@@ -287,9 +296,9 @@ def weno5_faces_x(v):
     return np.clip(v_plus, 0.0, 1.0), np.clip(v_minus, 0.0, 1.0)
 
 
-def rhs_horiz(Q_in, t_val):
-    """Advección horizontal periódica: −∂(u·Q)/∂x  (WENO5, 5º orden)."""
-    phi = Q_in / h2
+def rhs_horiz(h_phi_in, t_val):
+    """Advección horizontal periódica: −∂(u·h_phi)/∂x  (WENO5, 5º orden)."""
+    phi = h_phi_in / h2
     g_t = 1.0 + A_mod * np.sin(2*np.pi*t_val/T_period) * Sx
     u   = (U_0*H_base/h2) * (m_exp+1) * Ec**m_exp * g_t[:,None] - c_mig
     uf  = 0.5 * (u + np.roll(u, 1, axis=0))
@@ -302,10 +311,10 @@ def rhs_horiz(Q_in, t_val):
     return -(np.roll(Fx, -1, axis=0) - Fx) / dx
 
 
-def rhs_vert(Q_in, w_f, gd, Pt):
+def rhs_vert(h_phi_in, w_f, gd, Pt):
     """Parte vertical rígida (sub-ciclada) — MUSCL + Rusanov:
        − ∂/∂η[w_η·φ_s − f_sl·φ_s·(1−φ_s) − D_sl/h·∂φ_s/∂η]."""
-    phi = Q_in / h2
+    phi = h_phi_in / h2
 
     phi_ext = np.concatenate([phi[:, :1], phi, phi[:, -1:]], axis=1)
     slope = minmod(phi_ext[:, 1:-1] - phi_ext[:, :-2],
@@ -380,8 +389,8 @@ def run_simulation(slope_name, i_slope):
 
     # ── 5.1 CONDICIÓN INICIAL (masa HOMOGÉNEA: φ_s constante en el dominio) ──
     phi_ic = np.full((Nx, Nz), phi_s_target)
-    Q  = h2 * phi_ic.copy()
-    M0 = np.sum(Q) * dx * deta
+    h_phi  = h2 * phi_ic.copy()
+    M0 = np.sum(h_phi) * dx * deta
 
     # ── 5.2 PASO DE TIEMPO (dt_v depende de f_sl(φ_ic)) ──
     u_max  = np.max(np.abs((U_0*H_base/h2)*(m_exp+1)*(1+A_mod) - c_mig))
@@ -426,7 +435,7 @@ def run_simulation(slope_name, i_slope):
     sm = plt.cm.ScalarMappable(cmap=cmap_phi, norm=mcolors.Normalize(0,1))
     sm.set_array([])
     cb  = fig_v.colorbar(sm, cax=cb_ax, orientation='horizontal')
-    cb.set_label(r"$\phi_s$ — fracción de finos  (blanco=grueso, rojo=fino)", fontsize=9)
+    cb.set_label(r"$\phi_s$ — fracción de finos  (blanco=grueso, rojo=fino)", fontsize=14)
     cb.set_ticks([0, 0.25, 0.5, 0.75, 1.0])
 
     t_cur, step = 0.0, 0
@@ -438,33 +447,33 @@ def run_simulation(slope_name, i_slope):
         n_sub_step = max(1, int(np.ceil(dt_step / dt_v_eff)))
         dts        = dt_step / n_sub_step
 
-        rh1 = rhs_horiz(Q, t_cur)
-        Q1  = _clip_conserv(Q + dt_step * rh1)
-        rh2 = rhs_horiz(Q1, t_cur + dt_step)
-        Q   = _clip_conserv(0.5*Q + 0.5*(Q1 + dt_step*rh2))
+        rh1 = rhs_horiz(h_phi, t_cur)
+        h_phi1  = _clip_conserv(h_phi + dt_step * rh1)
+        rh2 = rhs_horiz(h_phi1, t_cur + dt_step)
+        h_phi   = _clip_conserv(0.5*h_phi + 0.5*(h_phi1 + dt_step*rh2))
 
         wf, gdf, Pt = precompute(t_cur + 0.5*dt_step, U_shear_x)
         for _ in range(n_sub_step):
-            Q = _clip_simple(Q + dts * rhs_vert(Q, wf, gdf, Pt))
-        Q = _clip_conserv(Q)
-        Mc = np.sum(Q) * dx * deta
+            h_phi = _clip_simple(h_phi + dts * rhs_vert(h_phi, wf, gdf, Pt))
+        h_phi = _clip_conserv(h_phi)
+        Mc = np.sum(h_phi) * dx * deta
         if Mc > 1e-15:
-            Q *= M0 / Mc
+            h_phi *= M0 / Mc
 
         t_cur += dt_step;  step += 1
 
         for tt in target_t:
             if tt not in recorded and t_cur >= tt:
-                snapshots[tt] = (Q / h2).copy();  recorded.add(tt)
+                snapshots[tt] = (h_phi / h2).copy();  recorded.add(tt)
 
         if step % 3000 == 0:
-            ph = Q/h2
+            ph = h_phi/h2
             mp = np.sum(np.mean(ph, axis=1)*h)/np.sum(h)
             print(f"{pfx} t={t_cur:6.1f}s  step={step:6d}  <φ_s>={mp:.6f}  "
                   f"wall={time.time()-t0_wall:.0f}s", flush=True)
 
         if t_cur >= next_frame:
-            phi_t = Q / h2
+            phi_t = h_phi / h2
             ax_v.clear()
 
             x_lab  = xc + c_mig * t_cur
@@ -490,18 +499,9 @@ def run_simulation(slope_name, i_slope):
             ax_v.set_xlim(x_dune0 + c_mig*t_cur, x_lee_toe + c_mig*t_cur)
             ax_v.invert_xaxis()
             ax_v.set_ylim(-0.5e-3, H_base + H_d + 3e-3)
-            ax_v.set_xlabel("$x$ (m) — posición en el laboratorio (eje espejado: flujo →izquierda)", fontsize=10)
-            ax_v.set_ylabel("$z$ (m)", fontsize=10)
-            ax_v.tick_params(direction='in', top=True, right=True, labelsize=8)
-
-            Tseg = t_cur / T_period
-            ax_v.set_title(
-                f"Duna bidispersa  ($\\phi_s$={phi_s_target:.2f}, $d_l$={d_l*1e3:.1f} mm, "
-                f"$d_s$={d_s*1e3:.1f} mm, R={R:.2f}, $i$={i_slope:.5f})  —  "
-                f"t = {t_cur:.0f} s  ({Tseg:.1f} ciclos de grain-flow)\n"
-                r"Adv. + Segregación ($f_{sl}$) + Difusión ($D_{sl}$), "
-                r"$U_{shear}(x)=\sqrt{g\,h(x)\,i}$ — Trewhela, Ancey & Gray (2021)",
-                fontsize=10, fontweight='bold')
+            ax_v.set_xlabel("$x$ (m) — posición en el laboratorio (eje espejado: flujo →izquierda)", fontsize=14)
+            ax_v.set_ylabel("$z$ (m)", fontsize=14)
+            ax_v.tick_params(direction='in', top=True, right=True, labelsize=12)
 
             ax_v.text(0.01, 0.80,
                       f"cresta x = {(x_crest_abs + c_mig*t_cur)*1e3:.1f} mm\n"
@@ -509,7 +509,7 @@ def run_simulation(slope_name, i_slope):
                       f"U_shear = {U_sh_trough*1e3:.1f}–{U_sh_crest*1e3:.1f} mm/s\n"
                       f"i = {i_slope:.5f}\n"
                       f"α_lee = {alpha_lee:.0f}°  (reposo)",
-                      transform=ax_v.transAxes, fontsize=8,
+                      transform=ax_v.transAxes, fontsize=12,
                       bbox=dict(fc='white', alpha=0.8, ec='none', boxstyle='round,pad=0.2'))
 
             fig_v.canvas.draw()
@@ -518,7 +518,7 @@ def run_simulation(slope_name, i_slope):
             next_frame += dt_frame
 
     png_final = os.path.join(out_dir, f"{OUT_BASE}_{tag}.png")
-    fig_v.savefig(png_final, dpi=300)
+    fig_v.savefig(png_final, dpi=300, bbox_inches='tight', pad_inches=0.2)
     vw.release();  plt.close(fig_v)
     print(f"{pfx} Video: {vp}  |  cómputo loop: {time.time()-t0_wall:.1f}s", flush=True)
 
@@ -559,27 +559,27 @@ def run_simulation(slope_name, i_slope):
         ax.plot(xl, h, 'k-', lw=1.8, zorder=4)
 
         ax.text(-0.015, 1.02, labels[idx], transform=ax.transAxes,
-                fontsize=11, style='italic', weight='bold', va='bottom')
+                fontsize=16, style='italic', weight='bold', va='bottom')
         ax.text(0.01, 0.72, f"t = {int(tt)} s", transform=ax.transAxes,
-                fontsize=9, fontweight='bold',
+                fontsize=14, fontweight='bold',
                 bbox=dict(fc='white', alpha=0.8, ec='none', boxstyle='round,pad=0.2'))
         ax.set_xlim(x_dune0 + c_mig*tt, x_lee_toe + c_mig*tt)
         ax.invert_xaxis()
         ax.set_ylim(-0.3e-3, H_base + H_d + 3e-3)
-        ax.set_ylabel("$z$ (m)", fontsize=9)
-        ax.tick_params(direction='in', top=True, right=True, labelsize=8)
+        ax.set_ylabel("$z$ (m)", fontsize=14)
+        ax.tick_params(direction='in', top=True, right=True, labelsize=12)
         if idx == 4:
-            ax.set_xlabel("$x$ (m) — posición en el laboratorio (eje espejado: flujo →izquierda)", fontsize=10)
+            ax.set_xlabel("$x$ (m) — posición en el laboratorio (eje espejado: flujo →izquierda)", fontsize=14)
 
 
 
     cb_ax2 = fig_f.add_axes([0.25, 0.055, 0.50, 0.012])
     cbar2  = fig_f.colorbar(im, cax=cb_ax2, orientation='horizontal')
-    cbar2.set_label(r"$\phi_s$ — fracción de finos  (blanco=grueso, rojo=fino)", fontsize=9)
+    cbar2.set_label(r"$\phi_s$ — fracción de finos  (blanco=grueso, rojo=fino)", fontsize=14)
     cbar2.set_ticks([0, 0.25, 0.5, 0.75, 1.0])
 
     fp = os.path.join(out_dir, f"{OUT_BASE}_fan_{tag}.png")
-    fig_f.savefig(fp, dpi=300);  plt.close(fig_f)
+    fig_f.savefig(fp, dpi=300, bbox_inches='tight', pad_inches=0.2);  plt.close(fig_f)
     print(f"{pfx} Fan diagram: {fp}  ═══ COMPLETADO ═══", flush=True)
 
     return {"phi_s": phi_s_target, "slope": slope_name, "i": i_slope,

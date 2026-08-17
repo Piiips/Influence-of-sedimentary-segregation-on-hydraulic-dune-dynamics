@@ -26,8 +26,8 @@ en la sección 1.11 para conservar corridas previas):
 
 FÍSICA (idéntica al modelo original; ver esa docstring para el detalle):
   PDE de Gray & Chugunov (2006) / Trewhela, Ancey & Gray (2021):
-    Q(x,η,t) = h(x)·φ_s(x,η,t),   η = z/h(x) ∈ [0,1]
-    dQ/dt + ∂/∂x(u·Q) + ∂/∂η[w_η·φ_s − f_sl·φ_s·(1−φ_s) − D_sl/h·∂φ_s/∂η] = 0
+    h_phi(x,η,t) = h(x)·φ_s(x,η,t),   η = z/h(x) ∈ [0,1]
+    d(h_phi)/dt + ∂/∂x(u·h_phi) + ∂/∂η[w_η·φ_s − f_sl·φ_s·(1−φ_s) − D_sl/h·∂φ_s/∂η] = 0
   Esquemas: WENO5 en x, MUSCL+Rusanov en η, operator splitting horiz/vert.
 ================================================================================
 """
@@ -68,17 +68,17 @@ alpha_lee = 30.0    # [°] ángulo de reposo del sotavento (lee).  Fija la pendi
 p_stoss   = 0.55    # [-] exponente de convexidad del barlovento (<1 = stoss convexo)
 
 # lecho inter-duna (trough plano que rompe la periodicidad directa lee↔stoss)
-L_flat_before = 0.10   # [m] trough ANTES de la duna (⇒ la duna arranca en x=0.1 m)
+L_flat_before = 0.05   # [m] trough ANTES de la duna (⇒ la duna arranca en x=0.1 m)
 L_flat_after  = 0.05   # [m] trough DESPUÉS del pie del lee
 
 # ── 1.4 CAPA ACTIVA Y MIGRACIÓN  (los knobs que más cambian el resultado) ─────
 H_base       = 1.0e-3   # [m] offset numérico del trough (escala de η en el lecho plano)
 delta_a      = 1.5e-3   # [m] espesor de la CAPA ACTIVA (~1–2 d_l). ↑ → sorting más grueso/profundo
 c_mig_fisico = 5.0e-6   # [m/s] velocidad de migración FÍSICA real del flume (0.3 mm/min)
-demo_speedup = 10.0     # [-] factor de aceleración SOLO para visualizar la laminación.
+demo_speedup = 1.0     # [-] factor de aceleración SOLO para visualizar la laminación.
                         #     =1.0 → migración física real (muy lenta). La física del sorting
                         #     (f_sl, D_sl, avalanchas) NO cambia, solo qué tan rápido rota el volumen.
-U_0     = 0.0003    # [m/s] velocidad de referencia de la ADVECCIÓN horizontal (lenta, sin ondas)
+U_0     = 0.00023    # [m/s] velocidad de referencia de la ADVECCIÓN horizontal (lenta, sin ondas)
 m_exp   = 3.0       # [-] exponente del perfil de Bagnold u~η^m.  ↑ → capa activa más delgada
 # U_shear NO es un escalar: es un PERFIL U_shear(x) = sqrt(g·h(x)·i_slope)
 #   (opción A: h(x) incluye H_base ⇒ el trough conserva un corte residual).
@@ -110,7 +110,7 @@ s_taper    = 0.75   # [-] inicio del apagado de la deposición (fracción del le
 w_taper    = 0.10   # [-] ancho de la transición del apagado hacia el pie del lee
 
 # ── 1.8 SIMULACIÓN Y MALLA ───────────────────────────────────────────────────
-t_max        = 2400.0   # [s] tiempo físico total simulado
+t_max        = 14400.0 # [s] tiempo físico total simulado
 Nx_per_dune  = 160      # [-] celdas por longitud de duna (resolución en x; dx = L_dune/Nx_per_dune)
 Nz           = 40       # [-] celdas verticales (resolución en η)
 sigma_smooth = 6.0      # [celdas] suavizado gaussiano del perfil de la duna
@@ -128,7 +128,7 @@ dt_frame = 4.0                # [s] intervalo físico entre cuadros (2400s → 6
 # ── 1.11 NOMBRE BASE DE LAS SALIDAS ──────────────────────────────────────────
 # Cambia esto (p. ej. a "single_slope_run3") para NO sobrescribir corridas
 # previas y poder comparar experimentos con distintos parámetros lado a lado.
-OUT_BASE = "Single_slope_model"
+OUT_BASE = "real_time"
 
 # #############################################################################
 # #   FIN DE LOS PARÁMETROS AJUSTABLES — normalmente no editar más abajo.      #
@@ -208,15 +208,15 @@ os.makedirs(out_dir, exist_ok=True)
 # =============================================================================
 # 4. NÚCLEO DEL SOLVER
 # =============================================================================
-def _clip_simple(Q_in):
+def _clip_simple(h_phi_in):
     """Recorte vectorizado rápido φ∈[0,1]. Usado dentro del sub-ciclo."""
-    return h2 * np.clip(Q_in / np.maximum(h2, 1e-9), 0.0, 1.0)
+    return h2 * np.clip(h_phi_in / np.maximum(h2, 1e-9), 0.0, 1.0)
 
 
-def _clip_conserv(Q_in):
+def _clip_conserv(h_phi_in):
     """Recorte con barrido bidireccional en η que redistribuye el exceso/déficit
     de masa localmente dentro de cada columna vertical (conservativo en x)."""
-    phi = np.clip(Q_in / np.maximum(h2, 1e-9), 0.0, 1.0)
+    phi = np.clip(h_phi_in / np.maximum(h2, 1e-9), 0.0, 1.0)
     exc = np.zeros(Nx)
     for j in range(Nz):
         v = phi[:, j] + exc;  ov = v > 1.0
@@ -282,9 +282,9 @@ def weno5_faces_x(v):
     return np.clip(v_plus, 0.0, 1.0), np.clip(v_minus, 0.0, 1.0)
 
 
-def rhs_horiz(Q_in, t_val):
-    """Advección horizontal periódica: −∂(u·Q)/∂x  (WENO5, 5º orden)."""
-    phi = Q_in / h2
+def rhs_horiz(h_phi_in, t_val):
+    """Advección horizontal periódica: −∂(u·h_phi)/∂x  (WENO5, 5º orden)."""
+    phi = h_phi_in / h2
     g_t = 1.0 + A_mod * np.sin(2*np.pi*t_val/T_period) * Sx
     u   = (U_0*H_base/h2) * (m_exp+1) * Ec**m_exp * g_t[:,None] - c_mig
     uf  = 0.5 * (u + np.roll(u, 1, axis=0))
@@ -297,10 +297,10 @@ def rhs_horiz(Q_in, t_val):
     return -(np.roll(Fx, -1, axis=0) - Fx) / dx
 
 
-def rhs_vert(Q_in, w_f, gd, Pt):
+def rhs_vert(h_phi_in, w_f, gd, Pt):
     """Parte vertical rígida (sub-ciclada) — MUSCL + Rusanov:
        − ∂/∂η[w_η·φ_s − f_sl·φ_s·(1−φ_s) − D_sl/h·∂φ_s/∂η]."""
-    phi = Q_in / h2
+    phi = h_phi_in / h2
 
     phi_ext = np.concatenate([phi[:, :1], phi, phi[:, -1:]], axis=1)
     slope = minmod(phi_ext[:, 1:-1] - phi_ext[:, :-2],
@@ -375,8 +375,8 @@ def run_simulation():
 
     # ── 5.1 CONDICIÓN INICIAL (masa HOMOGÉNEA: φ_s constante en el dominio) ──
     phi_ic = np.full((Nx, Nz), phi_s_target)
-    Q  = h2 * phi_ic.copy()
-    M0 = np.sum(Q) * dx * deta
+    h_phi  = h2 * phi_ic.copy()
+    M0 = np.sum(h_phi) * dx * deta
 
     # ── 5.2 PASO DE TIEMPO (dt_v depende de f_sl(φ_ic)) ──
     u_max  = np.max(np.abs((U_0*H_base/h2)*(m_exp+1)*(1+A_mod) - c_mig))
@@ -433,33 +433,33 @@ def run_simulation():
         n_sub_step = max(1, int(np.ceil(dt_step / dt_v_eff)))
         dts        = dt_step / n_sub_step
 
-        rh1 = rhs_horiz(Q, t_cur)
-        Q1  = _clip_conserv(Q + dt_step * rh1)
-        rh2 = rhs_horiz(Q1, t_cur + dt_step)
-        Q   = _clip_conserv(0.5*Q + 0.5*(Q1 + dt_step*rh2))
+        rh1 = rhs_horiz(h_phi, t_cur)
+        h_phi1  = _clip_conserv(h_phi + dt_step * rh1)
+        rh2 = rhs_horiz(h_phi1, t_cur + dt_step)
+        h_phi   = _clip_conserv(0.5*h_phi + 0.5*(h_phi1 + dt_step*rh2))
 
         wf, gdf, Pt = precompute(t_cur + 0.5*dt_step, U_shear_x)
         for _ in range(n_sub_step):
-            Q = _clip_simple(Q + dts * rhs_vert(Q, wf, gdf, Pt))
-        Q = _clip_conserv(Q)
-        Mc = np.sum(Q) * dx * deta
+            h_phi = _clip_simple(h_phi + dts * rhs_vert(h_phi, wf, gdf, Pt))
+        h_phi = _clip_conserv(h_phi)
+        Mc = np.sum(h_phi) * dx * deta
         if Mc > 1e-15:
-            Q *= M0 / Mc
+            h_phi *= M0 / Mc
 
         t_cur += dt_step;  step += 1
 
         for tt in target_t:
             if tt not in recorded and t_cur >= tt:
-                snapshots[tt] = (Q / h2).copy();  recorded.add(tt)
+                snapshots[tt] = (h_phi / h2).copy();  recorded.add(tt)
 
         if step % 3000 == 0:
-            ph = Q/h2
+            ph = h_phi/h2
             mp = np.sum(np.mean(ph, axis=1)*h)/np.sum(h)
             print(f"{pfx} t={t_cur:6.1f}s  step={step:6d}  <φ_s>={mp:.6f}  "
                   f"wall={time.time()-t0_wall:.0f}s", flush=True)
 
         if t_cur >= next_frame:
-            phi_t = Q / h2
+            phi_t = h_phi / h2
             ax_v.clear()
 
             x_lab  = xc + c_mig * t_cur
@@ -489,15 +489,6 @@ def run_simulation():
             ax_v.set_ylabel("$z$ (m)", fontsize=10)
             ax_v.tick_params(direction='in', top=True, right=True, labelsize=8)
 
-            Tseg = t_cur / T_period
-            ax_v.set_title(
-                f"Duna bidispersa  ($\\phi_s$={phi_s_target:.2f}, $d_l$={d_l*1e3:.1f} mm, "
-                f"$d_s$={d_s*1e3:.1f} mm, R={R:.2f}, $i$={i_slope:.5f})  —  "
-                f"t = {t_cur:.0f} s  ({Tseg:.1f} ciclos de grain-flow)\n"
-                r"Adv. + Segregación ($f_{sl}$) + Difusión ($D_{sl}$), "
-                r"$U_{shear}(x)=\sqrt{g\,h(x)\,i}$ — Trewhela, Ancey & Gray (2021)",
-                fontsize=10, fontweight='bold')
-
             ax_v.text(0.01, 0.80,
                       f"cresta x = {(x_crest_abs + c_mig*t_cur)*1e3:.1f} mm\n"
                       f"c_mig = {c_mig*1e3*60:.2f} mm/min\n"
@@ -513,7 +504,7 @@ def run_simulation():
             next_frame += dt_frame
 
     png_final = os.path.join(out_dir, f"{OUT_BASE}_{tag}.png")
-    fig_v.savefig(png_final, dpi=300)
+    fig_v.savefig(png_final, dpi=300, bbox_inches='tight', pad_inches=0.2)
     vw.release();  plt.close(fig_v)
     print(f"{pfx} Video: {vp}  |  cómputo loop: {time.time()-t0_wall:.1f}s", flush=True)
 
@@ -574,7 +565,7 @@ def run_simulation():
     cbar2.set_ticks([0, 0.25, 0.5, 0.75, 1.0])
 
     fp = os.path.join(out_dir, f"{OUT_BASE}_fan_{tag}.png")
-    fig_f.savefig(fp, dpi=300);  plt.close(fig_f)
+    fig_f.savefig(fp, dpi=300, bbox_inches='tight', pad_inches=0.2);  plt.close(fig_f)
     print(f"{pfx} Fan diagram: {fp}  ═══ COMPLETADO ═══", flush=True)
 
     return {"phi_s": phi_s_target, "i": i_slope,
