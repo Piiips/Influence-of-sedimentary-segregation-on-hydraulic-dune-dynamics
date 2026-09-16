@@ -9,6 +9,15 @@ import matplotlib.colors as mcolors
 import adv_seg_model as M
 import analisis_common as A
 
+# Configurar tipografía estilo JFM en LaTeX (sin usetex explícito para evitar fallas)
+plt.rcParams.update({
+    'text.usetex': False,
+    'font.family': 'serif',
+    'mathtext.fontset': 'cm', # Usa computer modern para ecuaciones simulando LaTeX
+    'font.size': 11,
+    'axes.linewidth': 0.8,
+})
+
 RESULTS_DIR = 'Results'
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
@@ -18,6 +27,10 @@ imola_cmap = mcolors.ListedColormap(_imola_data)
 
 A_DIFF = 0.108
 PHIS = [50, 60, 70, 80, 90]
+
+# --- Tiempos de las curvas phi_s vs eta (Gráfico 3) ---
+DT_CURVA = 180    # [s] separación entre curvas
+T_FINAL  = 1440   # [s] última curva graficada
 
 # --- Región del cuerpo de la duna ---
 I0 = int(np.searchsorted(M.xc, M.x_dune0))
@@ -106,37 +119,62 @@ for i_p, p_val in enumerate(PHIS):
     plt.close(fig2)
     
     # ---------------------------------------------------------
-    # 3. Gráfico phi_s vs eta para 5 instantes de tiempo
+    # 3. Gráfico phi_s vs eta para tiempos cada 180 s hasta 1440 s
     # ---------------------------------------------------------
-    n_snaps = len(snapshots)
-    # Seleccionamos 5 índices equidistantes
-    indices = np.linspace(0, n_snaps - 1, 5, dtype=int)
-    
-    # Extraemos el tiempo si está disponible (debería estar en 'target_t')
     if 'target_t' in data.files:
         times = data['target_t']
     else:
         # Fallback por si no existe
-        times = np.linspace(0, 2400, n_snaps) # Asumiendo t_max = 2400 s
+        n_snaps = len(snapshots)
+        times = np.linspace(0, 2400, n_snaps)
+        
+    # Definir los tiempos objetivo (DT_CURVA, 2·DT_CURVA, ..., T_FINAL)
+    target_times = np.arange(DT_CURVA, T_FINAL + DT_CURVA, DT_CURVA)
+    if T_FINAL > times.max():
+        raise ValueError(f"T_FINAL={T_FINAL} s excede el último snapshot ({times.max():.0f} s) en phi0{p_val}")
+    indices = [np.argmin(np.abs(times - t)) for t in target_times]
+    desfase = np.abs(times[indices] - target_times)
+    if desfase.max() > 1e-6:
+        print(f"  -> Aviso: snapshots no coinciden exactamente con {target_times.tolist()} "
+              f"(desfase máx. {desfase.max():.1f} s)")
     
     fig3 = plt.figure(figsize=(5, 5))
     ax3 = fig3.add_subplot(111)
     ax3.set_aspect('equal', adjustable='box')
     
-    colors = imola_cmap(np.linspace(0.1, 0.9, 5))
+    # Graficamos la condición inicial (t=0) como línea punteada gris en ax3
+    idx_0 = np.argmin(np.abs(times - 0))
+    ph_0 = snapshots[idx_0]
+    pr_0 = perfil_x_medio(ph_0)
+    ax3.plot(pr_0, M.ec, color='gray', linestyle='--', lw=2)
+    
+    # Colores interpolados para los tiempos requeridos (manteniendo el mismo rango de .1 a .9)
+    colors = imola_cmap(np.linspace(0.1, 0.9, len(target_times)))
     
     for i, idx in enumerate(indices):
         ph_t = snapshots[idx]
         pr_t = perfil_x_medio(ph_t)
-        t_val = times[idx]
-        ax3.plot(pr_t, M.ec, color=colors[i], lw=2, label=f't = {t_val:.0f} s')
+        ax3.plot(pr_t, M.ec, color=colors[i], lw=2)
         
-    ax3.set_xlabel(r'$\langle\phi_s\rangle_x$', fontsize=12)
-    ax3.set_ylabel(r'$\eta = z/h$', fontsize=12)
+    # Eliminar las etiquetas (labels) de los ejes
+    ax3.set_xlabel('')
+    ax3.set_ylabel('')
     ax3.set_xlim(0, 1.0)
     ax3.set_ylim(0, 1.0)
     ax3.grid(True, linestyle='--', alpha=0.5)
-    ax3.legend()
+    
+    # Crear la barra de colores (colorbar) asociada al tiempo, de manera discreta
+    import matplotlib.cm as cm
+    time_cmap = mcolors.ListedColormap(colors)
+    dt_step = target_times[1] - target_times[0]
+    bounds = np.linspace(target_times[0] - dt_step/2, target_times[-1] + dt_step/2, len(target_times) + 1)
+    norm = mcolors.BoundaryNorm(bounds, time_cmap.N)
+    
+    sm = cm.ScalarMappable(cmap=time_cmap, norm=norm)
+    sm.set_array([])
+    cbar = fig3.colorbar(sm, ax=ax3, fraction=0.046, pad=0.04, ticks=target_times)
+    cbar.set_label(r'$t$ (s)')
+    
     fig3.tight_layout()
     fig3.savefig(os.path.join(RESULTS_DIR, f'phi_s_vs_eta_time_phi{p_val}.png'), dpi=600, bbox_inches='tight', pad_inches=0.05)
     plt.close(fig3)

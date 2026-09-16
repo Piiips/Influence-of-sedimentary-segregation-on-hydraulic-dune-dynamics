@@ -111,47 +111,87 @@ def perfil_equilibrio(phi0, ell, eta_lo, eta_hi, n=200):
 # F1 — perfil de sorting vertical ⟨φ_s⟩(η)
 # =============================================================================
 def F1():
-    fig = plt.figure(figsize=(14.5, 5.4))
-    fig.patch.set_facecolor('white')
-    gs = fig.add_gridspec(1, 3, wspace=0.26, left=0.055, right=0.985,
-                          top=0.815, bottom=0.115)
-    axA, axB, axC = (fig.add_subplot(gs[0, k]) for k in range(3))
-
     eta_a = float(np.mean(A.eta_active_layer(M)[DUNE]))
     res = {}
+    
+    # Cargar datos
+    for k, p0 in enumerate(PHIS):
+        for kind in ('dif', 'hyp'):
+            ph, _ = _load(kind, p0)
+            res.setdefault(kind, {})[p0] = perfil_x_medio(ph)
+
+    phf = A._phi_faces(M, _load('dif', 0.7)[0])
+    ell_a = float(np.median(ell_faces(phf)[DUNE][:, -6:]))
+
+    # Inicializar archivo markdown
+    md_file = os.path.join(OD, 'descripciones_figuras.md')
+    with open(md_file, 'a') as f:
+        f.write("\n## Figura F1\n")
+        f.write("**F1_suptitle**: 'F1 · Perfil de sorting vertical promediado en $x$ sobre el cuerpo de la duna ($t$ = 2400 s, promedio ponderado por $h(x)$ sobre el cuerpo de la duna)'\n")
+
+    # Ancho original 0.3 de textwidth (5.3 in) = 1.59 in
+    w_fig_base = 1.59
+    h_fig_base = 1.59 * (5.4 / (14.5 / 3)) # Proporción original por subplot
+
+    # Ancho solicitado de 0.4 del texto
+    w_fig_A = 5.33 * 0.4
+    h_fig_A = w_fig_A * (5.4 / (14.5 / 3))
+
+    # F1_a (0.4 del ancho)
+    figA = plt.figure(figsize=(w_fig_A, h_fig_A))
+    figA.patch.set_facecolor('white')
+    axA = figA.add_subplot(111)
     for k, p0 in enumerate(PHIS):
         c = CMAP_PHI0(k / (len(PHIS) - 1))
-        for kind, ax, ls in (('dif', axA, '-'), ('hyp', axB, '-')):
-            ph, _ = _load(kind, p0)
-            pr = perfil_x_medio(ph)
-            ax.plot(pr, M.ec, color=c, lw=2.0, ls=ls, label=f"$\\phi_s^0$={p0:.1f}")
-            res.setdefault(kind, {})[p0] = pr
+        axA.plot(res['dif'][p0], M.ec, color=c, lw=2.0, ls='-', label=f"$\\phi_s^0$={p0:.1f}")
+    
+    axA.axhline(eta_a, color='0.35', ls=':', lw=1.3)
+    axA.set_xlim(-0.02, 1.02); axA.set_ylim(0, 1)
+    axA.legend(fontsize=8, loc='center left', framealpha=0.92)
+    axA.tick_params(direction='in', top=True, right=True, labelsize=8.5)
+    
+    with open(md_file, 'a') as f:
+        f.write("\n### F1_a.png\n")
+        f.write("- **Título original**: '(a) CON difusión ($A$=%.3f), $i$=0.00975'\n" % A_DIFF)
+        f.write("- **Anotación (en y=eta_a)**: '$\\langle\\eta_a\\rangle$'\n")
+        f.write("- **Eje X**: '$\\langle\\phi_s\\rangle_x$'\n")
+        f.write("- **Eje Y**: '$\\eta = z/h$'\n")
+        
+    outA = os.path.join(OD, 'F1_a.png')
+    figA.savefig(outA, dpi=250, facecolor='white', bbox_inches='tight')
+    plt.close(figA)
 
-    # perfil de equilibrio de Gray & Chugunov dentro de la capa activa
-    phf = A._phi_faces(M, _load('dif', 0.7)[0])
-    ell_a = float(np.median(ell_faces(phf)[DUNE][:, -6:]))     # ℓ cerca de la superficie
+    # F1_b (0.4 del ancho)
+    w_fig_B = 5.33 * 0.4
+    h_fig_B = w_fig_B * (5.4 / (14.5 / 3))
+    figB = plt.figure(figsize=(w_fig_B, h_fig_B))
+    figB.patch.set_facecolor('white')
+    axB = figB.add_subplot(111)
     for k, p0 in enumerate(PHIS):
-        peq, eeq = perfil_equilibrio(p0, ell_a, eta_a, 1.0)
-        axA.plot(peq, eeq, color=CMAP_PHI0(k / (len(PHIS) - 1)), lw=1.1, ls='--')
+        c = CMAP_PHI0(k / (len(PHIS) - 1))
+        axB.plot(res['hyp'][p0], M.ec, color=c, lw=2.0, ls='-', label=f"$\\phi_s^0$={p0:.1f}")
+    
+    axB.axhline(eta_a, color='0.35', ls=':', lw=1.3)
+    axB.set_xlim(-0.02, 1.02); axB.set_ylim(0, 1)
+    axB.legend(fontsize=8, loc='center left', framealpha=0.92)
+    axB.tick_params(direction='in', top=True, right=True, labelsize=8.5)
+    
+    with open(md_file, 'a') as f:
+        f.write("\n### F1_b.png\n")
+        f.write("- **Título original**: '(b) SIN difusión (hiperbólico puro)'\n")
+        f.write("- **Anotación (en y=eta_a)**: '$\\langle\\eta_a\\rangle$'\n")
+        f.write("- **Eje X**: '$\\langle\\phi_s\\rangle_x$'\n")
+        f.write("- **Eje Y**: '$\\eta = z/h$'\n")
 
-    for ax, ttl in ((axA, '(a) CON difusión ($A$=%.3f), $i$=0.00975' % A_DIFF),
-                    (axB, '(b) SIN difusión (hiperbólico puro)')):
-        ax.axhline(eta_a, color='0.35', ls=':', lw=1.3)
-        ax.text(0.02, eta_a + 0.015, r'$\langle\eta_a\rangle$', fontsize=8, color='0.3')
-        ax.set_xlim(-0.02, 1.02); ax.set_ylim(0, 1)
-        ax.set_xlabel(r'$\langle\phi_s\rangle_x$', fontsize=10)
-        ax.set_ylabel(r'$\eta = z/h$', fontsize=10)
-        ax.set_title(ttl, fontsize=10.5, loc='left')
-        ax.legend(fontsize=8, loc='center left', framealpha=0.92)
-        ax.tick_params(direction='in', top=True, right=True, labelsize=8.5)
-    axA.text(0.98, 0.02,
-             '- - - equilibrio difusivo de Gray & Chugunov (2006)\n'
-             f'      en la capa activa, $\\ell$ = {ell_a*1e3:.3f} mm',
-             transform=axA.transAxes, ha='right', va='bottom', fontsize=7.6,
-             bbox=dict(fc='white', ec='0.6', boxstyle='round,pad=0.3'))
+    outB = os.path.join(OD, 'F1_b.png')
+    figB.savefig(outB, dpi=250, facecolor='white', bbox_inches='tight')
+    plt.close(figB)
 
-    # (c) índice de gradación vertical
-    win = M.ec < eta_a                       # solo el depósito sepultado
+    # F1_c
+    figC = plt.figure(figsize=(w_fig_base, h_fig_base))
+    figC.patch.set_facecolor('white')
+    axC = figC.add_subplot(111)
+    win = M.ec < eta_a
     lo = win & (M.ec < 0.5 * eta_a); hi = win & (M.ec >= 0.5 * eta_a)
     for kind, c, mk, lab in (('dif', '#c62828', 'o', 'con difusión'),
                              ('hyp', '#1565c0', 's', 'sin difusión')):
@@ -161,20 +201,20 @@ def F1():
             axC.annotate(f'{v:+.2f}', (p, v), textcoords='offset points',
                          xytext=(-16 if kind=='dif' else 16, -3), ha='center', fontsize=7, color=c)
     axC.axhline(0.0, color='k', lw=1.0)
-    axC.set_xlabel(r'$\phi_s^0$', fontsize=10)
-    axC.set_ylabel(r'$\langle\phi_s\rangle_{\rm sup} - \langle\phi_s\rangle_{\rm inf}$',
-                   fontsize=10)
-    axC.set_title('(c) índice de gradación en el depósito sepultado\n'
-                  r'      ($>0$: afinamiento hacia arriba)', fontsize=10, loc='left', pad=8)
     axC.legend(fontsize=8.5, loc='best', framealpha=0.92)
     axC.tick_params(direction='in', top=True, right=True, labelsize=8.5)
 
-    fig.suptitle('F1 · Perfil de sorting vertical promediado en $x$ sobre el cuerpo de la duna'
-                 f'\n($t$ = 2400 s, promedio ponderado por $h(x)$ sobre el cuerpo de la duna)',
-                 fontsize=12, y=0.995)
-    out = os.path.join(OD, 'F1_perfil_sorting_vertical.png')
-    fig.savefig(out, dpi=250, facecolor='white'); plt.close(fig)
-    print(f"  ✓ {os.path.basename(out)}   ℓ(capa activa) = {ell_a*1e3:.4f} mm")
+    with open(md_file, 'a') as f:
+        f.write("\n### F1_c.png\n")
+        f.write("- **Título original**: '(c) índice de gradación en el depósito sepultado ($>0$: afinamiento hacia arriba)'\n")
+        f.write("- **Eje X**: '$\\phi_s^0$'\n")
+        f.write("- **Eje Y**: '$\\langle\\phi_s\\rangle_{\\rm sup} - \\langle\\phi_s\\rangle_{\\rm inf}$'\n")
+
+    outC = os.path.join(OD, 'F1_c.png')
+    figC.savefig(outC, dpi=250, facecolor='white', bbox_inches='tight')
+    plt.close(figC)
+
+    print(f"  ✓ F1_a.png, F1_b.png, F1_c.png guardados. ℓ(capa activa) = {ell_a*1e3:.4f} mm")
     return res
 
 
@@ -208,14 +248,16 @@ def F2():
                      zorder=4)
     axA.plot(xmm, M.h[SL] * 1e3, 'k-', lw=1.8, zorder=5)
     axA.plot(xmm, (M.h[SL] - M.delta_a) * 1e3, color='0.3', ls=':', lw=1.3, zorder=5)
+    axA.fill_between(xmm, (M.h[SL] - M.delta_a) * 1e3, M.h[SL] * 1e3, facecolor='none', hatch='////', edgecolor='black', alpha=0.15, zorder=5)
     axA.plot([], [], color='#00e5ff', lw=2.6, label=r'$u=0$ (punto de estancamiento cinemático)')
     axA.plot([], [], color='0.25', lw=0.9, label=r'líneas de corriente de $(u,\,w_z)$')
-    axA.plot([], [], color='0.3', ls=':', lw=1.3, label=r'$\eta_a$')
+    axA.plot([], [], color='0.3', ls=':', lw=1.3, label=r'$\eta_a$ (base capa activa)')
     axA.set_ylim(0, M.h.max() * 1e3 * 1.02)
     axA.set_xlabel(r'$x$ (mm)', fontsize=10); axA.set_ylabel(r'$z$ (mm)', fontsize=10)
     axA.set_title(r'(a) $\phi_s$, líneas de corriente e isolínea $u=0$ en coordenadas físicas',
                   fontsize=10.5, loc='left')
-    axA.legend(fontsize=8, loc='upper left', framealpha=0.92)
+    axA.invert_xaxis()
+    axA.legend(fontsize=8, loc='upper right', framealpha=0.92)
     axA.tick_params(direction='in', top=True, right=True, labelsize=8.5)
     cb = fig.colorbar(pm, ax=[axA, axB], pad=0.012, fraction=0.028)
     cb.set_label(r'$\phi_s$ — fracción de finos', fontsize=9.5)
@@ -231,6 +273,7 @@ def F2():
     axB.contour(xmm, M.ec, u_c[SL].T * 1e3, levels=[0.0], colors='#00e5ff', linewidths=2.6)
     e_a = A.eta_active_layer(M)
     axB.plot(xmm, e_a[SL], color='0.3', ls=':', lw=1.3)
+    axB.fill_between(xmm, e_a[SL], 1.0, facecolor='none', hatch='////', edgecolor='black', alpha=0.15, zorder=5)
 
     # localizador de la zona de gruesos: mínimo de φ_s bajo la capa activa
     e_coarse = np.full(M.Nx, np.nan)
@@ -253,26 +296,30 @@ def F2():
                      mec='k', mew=0.8, zorder=6,
                      label=r'estancamiento ($u=0$ y $w_\eta=0$)')
     axB.plot([], [], color='#00e5ff', lw=2.6, label=r'$u=0$')
+    axB.plot([], [], color='0.3', ls=':', lw=1.3, label=r'$\eta_a$ (base capa activa)')
     axB.set_xlabel(r'$x$ (mm)', fontsize=10); axB.set_ylabel(r'$\eta=z/h$', fontsize=10)
     axB.set_ylim(0, 1)
     axB.set_title(r'(b) malla $\sigma$: la zona de gruesos atrapada NO coincide con $u=0$;'
                   '\n      el atrapamiento lo produce la celda de recirculación cerrada',
                   fontsize=10, loc='left')
+    axB.invert_xaxis()
     h_, l_ = axB.get_legend_handles_labels()
     seen = dict(zip(l_, h_))
-    axB.legend(seen.values(), seen.keys(), fontsize=7.6, loc='lower left', framealpha=0.92)
+    axB.legend(seen.values(), seen.keys(), fontsize=7.2, loc='upper left',
+               bbox_to_anchor=(0.01, 0.98), borderpad=0.3, labelspacing=0.25,
+               handletextpad=0.4, framealpha=0.92)
     axB.tick_params(direction='in', top=True, right=True, labelsize=8.5)
 
     ok = np.isfinite(e_coarse[DUNE]) & np.isfinite(e_u0[DUNE])
     dd = e_u0[DUNE][ok] - e_coarse[DUNE][ok]
-    axB.text(0.985, 0.06,
+    axB.text(0.985, 0.94,
              f"$\\eta_{{u=0}} - \\eta_{{\\rm gruesos}}$:  mediana = {np.median(dd):+.3f}, "
              f"rango [{dd.min():+.3f}, {dd.max():+.3f}]\n"
              f"= {np.median(dd)*M.h[DUNE].mean()*1e3:+.2f} mm: la zona de gruesos está "
              f"SISTEMÁTICAMENTE por debajo de $u=0$\n"
              f"({ok.sum()} columnas; correlación de Pearson = "
              f"{np.corrcoef(e_u0[DUNE][ok], e_coarse[DUNE][ok])[0,1]:+.2f})",
-             transform=axB.transAxes, ha='right', va='bottom', fontsize=7.6,
+             transform=axB.transAxes, ha='right', va='top', fontsize=7.6,
              bbox=dict(fc='#fff8e1', ec='0.6', boxstyle='round,pad=0.3'))
 
     fig.suptitle('F2 · La zona de gruesos atrapada y la celda de recirculación '

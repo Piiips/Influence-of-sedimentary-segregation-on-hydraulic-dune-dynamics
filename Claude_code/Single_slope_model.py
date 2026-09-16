@@ -74,8 +74,8 @@ L_flat_after  = 0.05   # [m] trough DESPUÉS del pie del lee
 # ── 1.4 CAPA ACTIVA Y MIGRACIÓN  (los knobs que más cambian el resultado) ─────
 H_base       = 1.0e-3   # [m] offset numérico del trough (escala de η en el lecho plano)
 delta_a      = 1.5e-3   # [m] espesor de la CAPA ACTIVA (~1–2 d_l). ↑ → sorting más grueso/profundo
-c_mig_fisico = 5.0e-6   # [m/s] velocidad de migración FÍSICA real del flume (0.3 mm/min)
-demo_speedup = 1.0     # [-] factor de aceleración SOLO para visualizar la laminación.
+c_mig_fisico = 3.0e-6   # [m/s] velocidad de migración FÍSICA real del flume (0.3 mm/min)
+demo_speedup = 10.0     # [-] factor de aceleración SOLO para visualizar la laminación.
                         #     =1.0 → migración física real (muy lenta). La física del sorting
                         #     (f_sl, D_sl, avalanchas) NO cambia, solo qué tan rápido rota el volumen.
 U_0     = 0.00023    # [m/s] velocidad de referencia de la ADVECCIÓN horizontal (lenta, sin ondas)
@@ -110,7 +110,7 @@ s_taper    = 0.75   # [-] inicio del apagado de la deposición (fracción del le
 w_taper    = 0.10   # [-] ancho de la transición del apagado hacia el pie del lee
 
 # ── 1.8 SIMULACIÓN Y MALLA ───────────────────────────────────────────────────
-t_max        = 14400.0 # [s] tiempo físico total simulado
+t_max        = 4 * 3600 # [s] tiempo físico total simulado 4 horas
 Nx_per_dune  = 160      # [-] celdas por longitud de duna (resolución en x; dx = L_dune/Nx_per_dune)
 Nz           = 40       # [-] celdas verticales (resolución en η)
 sigma_smooth = 6.0      # [celdas] suavizado gaussiano del perfil de la duna
@@ -128,7 +128,7 @@ dt_frame = 4.0                # [s] intervalo físico entre cuadros (2400s → 6
 # ── 1.11 NOMBRE BASE DE LAS SALIDAS ──────────────────────────────────────────
 # Cambia esto (p. ej. a "single_slope_run3") para NO sobrescribir corridas
 # previas y poder comparar experimentos con distintos parámetros lado a lado.
-OUT_BASE = "real_time"
+OUT_BASE = "Test_model_by_experimental"
 
 # #############################################################################
 # #   FIN DE LOS PARÁMETROS AJUSTABLES — normalmente no editar más abajo.      #

@@ -98,7 +98,7 @@ m_exp   = 3.0       # [-] exponente del perfil de Bagnold u~η^m.  ↑ → capa 
 #   Impulsa la INTENSIDAD del kinetic sieving según la altura local (máx. en
 #   cresta, mín. en trough), DESACOPLADO de la advección/migración.
 #   Se calcula por pendiente dentro de run_simulation().
-SLOPES = {"i1": i1, "i2": i2}   # [-] el script corre UNA simulación por pendiente
+SLOPES = {"i1": i1}   # [-] el script corre UNA simulación por pendiente
 w_tanh  = 0.3e-3    # [m] ancho de la transición de la ventana de capa activa (escalón tanh)
 
 # ── 1.5 CONSTANTES DE SEGREGACIÓN (Trewhela, Ancey & Gray 2021, Tabla 3) ──────
@@ -417,9 +417,13 @@ def run_simulation(slope_name, i_slope):
           f"n_sub={n_sub}  f_sl_max={f_sl_max*1e3:.3f}mm/s  D_sl_max={D_sl_max:.2e}m²/s",
           flush=True)
 
-    # ── 5.3 SIMULACIÓN + VIDEO + SNAPSHOTS ──
-    target_t  = [0.0, t_max*0.25, t_max*0.5, t_max*0.75, t_max]  # 5 snapshots repartidos
-    snapshots = {0.0: phi_ic.copy()}
+    t_hist    = []
+    x_crest_hist, H_d_hist = [], []
+    target_t  = list(np.arange(0, t_max + 60, 60))  # Snapshots cada 60 s
+    snapshots = {}
+    
+    t_cur = 0.0
+    snapshots[0.0] = phi_ic.copy()
     recorded  = {0.0}
 
     cmap_phi = mcolors.LinearSegmentedColormap.from_list(
@@ -537,8 +541,10 @@ def run_simulation(slope_name, i_slope):
     plt.subplots_adjust(left=0.08, right=0.96, top=0.94, bottom=0.11, hspace=0.32)
     labels = ['(a)', '(b)', '(c)', '(d)', '(e)']
 
-    for idx, tt in enumerate(target_t):
+    plot_target_t = [0.0, t_max*0.25, t_max*0.5, t_max*0.75, t_max]
+    for idx, tt in enumerate(plot_target_t):
         ax = axes[idx]
+        # Usamos el tt exacto si está guardado, sino el más cercano (pero sabemos que es múltiplo de 60)
         phi_t = snapshots.get(tt, phi_ic)
         xl    = xc + c_mig * tt
 
@@ -591,19 +597,24 @@ def run_simulation(slope_name, i_slope):
 # 6. MAIN — una corrida por pendiente (i1, i2), φ_s = 0.7
 # =============================================================================
 if __name__ == "__main__":
-    print("══════════════════════════════════════════════════════════════")
-    print(f"  Slope_comparation — φ_s = {PHI_S:.2f}, "
-          f"pendientes: {', '.join(f'{k}={v:.5f}' for k, v in SLOPES.items())}")
-    print(f"  U_shear(x)=sqrt(g·h(x)·i)  c_mig_fis={c_mig_fisico*1e3*60:.3f}mm/min  "
-          f"demo×{demo_speedup:.0f}  U_0={U_0*1e3:.2f}mm/s  t_max={t_max:.0f}s")
-    print("  Adv.+segregación+difusión (Trewhela 2021)")
-    print("══════════════════════════════════════════════════════════════", flush=True)
-
     t0 = time.time()
-    results = [run_simulation(name, i_sl) for name, i_sl in SLOPES.items()]
+    all_results = []
+    
+    for phi_val in [0.6, 0.7, 0.8, 0.9]:
+        PHI_S = phi_val
+        print("══════════════════════════════════════════════════════════════")
+        print(f"  Slope_comparation — φ_s = {PHI_S:.2f}, "
+              f"pendientes: {', '.join(f'{k}={v:.5f}' for k, v in SLOPES.items())}")
+        print(f"  U_shear(x)=sqrt(g·h(x)·i)  c_mig_fis={c_mig_fisico*1e3*60:.3f}mm/min  "
+              f"demo×{demo_speedup:.0f}  U_0={U_0*1e3:.2f}mm/s  t_max={t_max:.0f}s")
+        print("  Adv.+segregación+difusión (Trewhela 2021)")
+        print("══════════════════════════════════════════════════════════════", flush=True)
+
+        results = [run_simulation(name, i_sl) for name, i_sl in SLOPES.items()]
+        all_results.extend(results)
 
     print("\n══ RESUMEN ══")
-    for r in results:
+    for r in all_results:
         print(f"  {r['slope']}={r['i']:.5f}  φ_s={r['phi_s']:.2f}  "
               f"({r['wall_s']:.0f} s de pared)")
         print(f"    video : {os.path.basename(r['video'])}")

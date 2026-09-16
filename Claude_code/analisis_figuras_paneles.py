@@ -101,7 +101,8 @@ def _f1_perfil(kind, titulo, con_equilibrio):
 def F1_a():
     fig, pr = _f1_perfil('dif', '(a) with diffusion ($A$=%.3f), $i$=0.00975' % A_DIFF, True)
     INFO['F1_dif'] = pr
-    return _save(fig, 'F1_a')
+    fig.tight_layout(pad=0.2)
+    return _save(fig, 'F1_a', tight=False)
 
 
 def F1_b():
@@ -174,6 +175,8 @@ def F2_a():
     _ejes(ax)
     cb = fig.colorbar(pm, ax=ax, pad=0.012, fraction=0.030)
     cb.set_label(r'$\phi_s$ — fines fraction', fontsize=10)
+    import matplotlib.ticker as ticker
+    ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, pos: f'{x/1000:g}'))
     return _save(fig, 'F2_a')
 
 
@@ -216,6 +219,8 @@ def F2_b():
     INFO['F2b'] = dict(mediana=float(np.median(dd)), lo=float(dd.min()), hi=float(dd.max()),
                        mm=float(np.median(dd) * M.h[DUNE].mean() * 1e3), n=int(ok.sum()),
                        r=float(np.corrcoef(e_u0[DUNE][ok], e_coarse[DUNE][ok])[0, 1]))
+    import matplotlib.ticker as ticker
+    ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, pos: f'{x/1000:g}'))
     return _save(fig, 'F2_b')
 
 
@@ -516,11 +521,100 @@ def F8_c():
     return _save(fig, 'F8_c')
 
 
+
+def F_fan():
+    import scipy.ndimage as ndimage
+    import matplotlib.colors as mcolors
+    import matplotlib.ticker as ticker
+    
+    npz_file = "outputs/runs/Single_slope_model_cmp_snapshots_phi070.npz"
+    if not os.path.exists(npz_file):
+        print(f"Skipping F_fan: file not found {npz_file}")
+        return
+        
+    data = np.load(npz_file)
+    target_t = data["target_t"]
+    snapshots = data["snapshots"]
+    xc = data["xc"]
+    h = data["h"]
+    c_mig = data["c_mig"]
+    H_base = data["H_base"]
+    H_d = data["H_d"]
+    x_dune0 = data["x_dune0"]
+    x_lee_toe = data["x_lee_toe"]
+    
+    Nx = len(xc)
+    dx = xc[1] - xc[0]
+    Nz = snapshots.shape[2]
+    deta = 1.0 / Nz
+    ec = (np.arange(Nz) + 0.5) * deta
+    Xc, Ec = np.meshgrid(xc, ec, indexing="ij")
+    h2 = h[:, None]
+    L_dom = xc[-1] + dx/2.0
+    
+    cmap_phi = mcolors.LinearSegmentedColormap.from_list(
+        "white_red", [(1.0,1.0,1.0), (0.78,0.06,0.08)], N=256)
+
+    im_ref = None
+
+    for idx, tt in enumerate(target_t):
+        fig_width = 5.33 * 0.8
+        fig_height = 1.0
+        fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+        fig.patch.set_facecolor("white")
+        
+        phi_t = snapshots[idx]
+        xl    = xc + c_mig * tt
+        Xl2d = Xc + c_mig * tt
+        
+        levels = np.linspace(-0.05, 1.05, 12)
+        zf = 3
+        pz = np.clip(ndimage.zoom(phi_t, zf, order=3), 0, 1)
+        xz = np.linspace(0, L_dom, Nx*zf);  ez = np.linspace(0, 1, Nz*zf)
+        Xz, Ez = np.meshgrid(xz, ez, indexing="ij")
+        hz = np.interp(xz, xc, h)
+        im = ax.contourf(Xz + c_mig*tt, Ez*hz[:,None], pz,
+                         levels=levels, cmap=cmap_phi, vmin=0, vmax=1, zorder=1)
+
+        if im_ref is None:
+            im_ref = im
+
+        ax.plot(xl, h, "k-", lw=1.0, zorder=4)
+
+        ax.set_xlim(x_dune0 + c_mig*tt, x_lee_toe + c_mig*tt)
+        ax.invert_xaxis()
+        ax.set_ylim(-0.3e-3, H_base + H_d + 3e-3)
+        
+        ax.set_ylabel("")
+        ax.set_xlabel("")
+        ax.tick_params(direction="in", top=True, right=True)
+
+        ax.set_aspect(1.3)
+        ax.set_yticks([0, 0.01])
+        ax.yaxis.set_major_formatter(ticker.FormatStrFormatter("%.2f"))
+
+        fig.subplots_adjust(left=0.11, right=0.93, top=0.89, bottom=0.31)
+        _save(fig, f"F_fan_t{tt:g}", tight=False)
+
+    # Colorbar
+    cb_fig_width = 5.33 * 0.6
+    fig_cb, ax_cb = plt.subplots(figsize=(cb_fig_width, 0.6))
+    fig_cb.patch.set_facecolor("white")
+    ax_cb.remove()
+    
+    cb_ax2 = fig_cb.add_axes([0.1, 0.4, 0.8, 0.2])
+    cbar2  = fig_cb.colorbar(im_ref, cax=cb_ax2, orientation="horizontal")
+    
+    cbar2.set_label("")
+    cbar2.set_ticks([0, 0.2, 0.4, 0.6, 0.8, 1.0])
+
+    _save(fig_cb, "F_fan_colorbar", tight=False)
+
 PANELES = {'F1_a': F1_a, 'F1_b': F1_b, 'F1_c': F1_c,
            'F2_a': F2_a, 'F2_b': F2_b,
            'F4_a': F4_a, 'F4_b': F4_b, 'F4_c': F4_c, 'F4_d': F4_d,
            'F6_a': F6_a, 'F6_a1': F6_a1, 'F6_a2': F6_a2, 'F6_b': F6_b,
-           'F8_a': F8_a, 'F8_c': F8_c}
+           'F8_a': F8_a, 'F8_c': F8_c, 'F_fan': F_fan}
 
 
 if __name__ == "__main__":
